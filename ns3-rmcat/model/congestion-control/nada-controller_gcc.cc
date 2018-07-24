@@ -32,7 +32,7 @@
  * @author Xiaoqing Zhu
  */
 
-#include "nada-controller.h"
+#include "nada-controller_gcc.h"
 #include <iostream>
 #include <sstream>
 #include <iomanip>

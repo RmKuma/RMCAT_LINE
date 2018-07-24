@@ -25,10 +25,10 @@
  * @author Xiaoqing Zhu
  */
 
-#include "rmcat-sender.h"
-#include "rtp-header.h"
-#include "ns3/dummy-controller.h"
-#include "ns3/nada-controller.h"
+#include "rmcat-sender_gcc.h"
+#include "rtp-header_gcc.h"
+#include "ns3/dummy-controller_gcc.h"
+#include "ns3/nada-controller_gcc.h"
 #include "ns3/udp-socket-factory.h"
 #include "ns3/packet.h"
 #include "ns3/simulator.h"
@@ -370,7 +370,7 @@ void RmcatSender::RecvPacket (Ptr<Socket> socket)
         const auto timestampUs = item.second.m_timestampUs;
         const auto ecn = item.second.m_ecn;
         NS_ASSERT (timestampUs <= nowUs);
-        m_controller->processFeedback (nowUs / 1000, sequence, timestampUs / 1000, 0, 0, 0 , 0,ecn); // TODO (next patch): Change params to Us
+        m_controller->processFeedback (nowUs / 1000, sequence, timestampUs / 1000,0,0,0,0,0, ecn); // TODO (next patch): Change params to Us
     }
     CalcBufferParams (nowUs / 1000);
 }

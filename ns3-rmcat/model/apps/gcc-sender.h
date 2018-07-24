@@ -28,9 +28,9 @@
 #ifndef RMCAT_SENDER_H
 #define RMCAT_SENDER_H
 
-#include "rmcat-constants.h"
+#include "rmcat-constants_gcc.h"
 #include "ns3/syncodecs.h"
-#include "ns3/sender-based-controller.h"
+#include "ns3/sender-based-controller_gcc.h"
 #include "ns3/socket.h"
 #include "ns3/application.h"
 #include <memory>

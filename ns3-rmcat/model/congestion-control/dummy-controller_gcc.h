@@ -28,7 +28,7 @@
 #ifndef DUMMY_CONTROLLER_H
 #define DUMMY_CONTROLLER_H
 
-#include "sender-based-controller.h"
+#include "sender-based-controller_gcc.h"
 
 namespace rmcat {
 

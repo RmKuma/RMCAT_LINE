@@ -28,10 +28,12 @@
  * @author Xiaoqing Zhu
  */
 
-#include "ns3/nada-controller.h"
-#include "ns3/rmcat-sender.h"
-#include "ns3/rmcat-receiver.h"
-#include "ns3/rmcat-constants.h"
+#include "ns3/vcc-controller.h"
+#include "ns3/nada-controller_gcc.h"
+#include "ns3/rmcat-sender_gcc.h"
+#include "ns3/rmcat-vcc-receiver.h"
+#include "ns3/rmcat-receiver_gcc.h"
+#include "ns3/rmcat-constants_gcc.h"
 #include "ns3/point-to-point-helper.h"
 #include "ns3/data-rate.h"
 #include "ns3/bulk-send-helper.h"
@@ -51,6 +53,15 @@ const uint32_t TOPO_DEFAULT_PDELAY =      50;    // in ms:   50ms
 const uint32_t TOPO_DEFAULT_QDELAY =     300;    // in ms:  300ms
 
 using namespace ns3;
+
+/**********************************************
+ * by JNGWOCK
+ **********************************************/
+#define RMCAT_SIM_ENDTIME         40.             // was 300.
+#define RMCAT_SIM_START_APP       10.             // was 10.
+#define RMCAT_SIM_START_TCP       17.             // was 17.
+#define RMCAT_SIM_START_UDP       23.             // was 23.
+
 
 static NodeContainer BuildExampleTopo (uint64_t bps,
                                        uint32_t msDelay,
@@ -149,7 +160,7 @@ static void InstallUDP (Ptr<Node> sender,
     serverApps.Stop (Seconds (stopTime));
 }
 
-static void InstallApps (bool nada,
+static void InstallApps (std::string algo,
                          Ptr<Node> sender,
                          Ptr<Node> receiver,
                          uint16_t port,
@@ -160,13 +171,27 @@ static void InstallApps (bool nada,
                          float stopTime)
 {
     Ptr<RmcatSender> sendApp = CreateObject<RmcatSender> ();
-    Ptr<RmcatReceiver> recvApp = CreateObject<RmcatReceiver> ();
+    Ptr<RmcatReceiver> recvApp = NULL;
+
+    if(algo == "vcc") {
+      recvApp = CreateObject<RmcatVccReceiver> ();
+      sendApp->SetAlgo(algo);
+    }
+    else {
+      recvApp = CreateObject<RmcatReceiver> ();
+    }
+
     sender->AddApplication (sendApp);
     receiver->AddApplication (recvApp);
 
-    if (nada) {
+    if (algo == "nada") {
         sendApp->SetController (std::make_shared<rmcat::NadaController> ());
     }
+    else if(algo == "vcc") {
+        sendApp->SetController (std::make_shared<rmcat::VccController> ());
+    }
+
+
     Ptr<Ipv4> ipv4 = receiver->GetObject<Ipv4> ();
     Ipv4Address receiverIp = ipv4->GetAddress (1, 0).GetLocal ();
     sendApp->Setup (receiverIp, port); // initBw, minBw, maxBw);
@@ -191,21 +216,21 @@ int main (int argc, char *argv[])
     int nTcp = 0;
     int nUdp = 0;
     bool log = false;
-    bool nada = true;
-    std::string strArg  = "strArg default";
+    std::string algo = "vcc";
+
 
     CommandLine cmd;
     cmd.AddValue ("rmcat", "Number of RMCAT (NADA) flows", nRmcat);
     cmd.AddValue ("tcp", "Number of TCP flows", nTcp);
     cmd.AddValue ("udp", "Number of UDP flows", nUdp);
     cmd.AddValue ("log", "Turn on logs", log);
-    cmd.AddValue ("nada", "true: use NADA, false: use dummy", nada);
+    cmd.AddValue ("algo", "Algorithm", algo);
     cmd.Parse (argc, argv);
 
     if (log) {
-        LogComponentEnable ("RmcatSender", LOG_INFO);
-        LogComponentEnable ("RmcatReceiver", LOG_INFO);
-        LogComponentEnable ("Packet", LOG_FUNCTION);
+        /// LogComponentEnable ("RmcatSender", LOG_INFO);
+        /// LogComponentEnable ("RmcatReceiver", LOG_INFO);
+        /// LogComponentEnable ("Packet", LOG_FUNCTION);
     }
 
     // configure default TCP parameters
@@ -221,20 +246,20 @@ int main (int argc, char *argv[])
     const float maxBw =  RMCAT_DEFAULT_RMAX;
     const float initBw = RMCAT_DEFAULT_RINIT;
 
-    const float endTime = 300.;
+    const float endTime = RMCAT_SIM_ENDTIME;
 
     NodeContainer nodes = BuildExampleTopo (linkBw, msDelay, msQDelay);
 
     int port = 8000;
     for (size_t i = 0; i < nRmcat; i++) {
-        auto start = 10. * i;
+        auto start = RMCAT_SIM_START_APP * i;
         auto end = std::max (start + 1., endTime - start);
-        InstallApps (nada, nodes.Get (0), nodes.Get (1), port++,
+        InstallApps (algo, nodes.Get (0), nodes.Get (1), port++,
                      initBw, minBw, maxBw, start, end);
     }
 
     for (size_t i = 0; i < nTcp; i++) {
-        auto start = 17. * i;
+        auto start = RMCAT_SIM_START_TCP * i;
         auto end = std::max (start + 1., endTime - start);
         InstallTCP (nodes.Get (0), nodes.Get (1), port++, start, end);
     }
@@ -244,13 +269,17 @@ int main (int argc, char *argv[])
     const uint32_t pktSize = DEFAULT_PACKET_SIZE;
 
     for (size_t i = 0; i < nUdp; i++) {
-        auto start = 23. * i;
+        auto start = RMCAT_SIM_START_UDP * i;
         auto end = std::max (start + 1., endTime - start);
         InstallUDP (nodes.Get (0), nodes.Get (1), port++,
                     bandwidth, pktSize, start, end);
     }
 
-    std::cout << "Running Simulation..." << std::endl;
+    std::string commandLineStr= "";
+    for (int i=1; i < argc; i++) 
+      commandLineStr.append(std::string(argv[i]).append(" "));
+
+    std::cout << "Running Simulation with command line: " << commandLineStr << std::endl;
     Simulator::Stop (Seconds (endTime));
     Simulator::Run ();
     Simulator::Destroy ();

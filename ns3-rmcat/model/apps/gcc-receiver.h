@@ -28,7 +28,7 @@
 #ifndef RMCAT_RECEIVER_H
 #define RMCAT_RECEIVER_H
 
-#include "rtp-header.h"
+#include "rtp-header_gcc.h"
 #include "ns3/socket.h"
 #include "ns3/application.h"
 

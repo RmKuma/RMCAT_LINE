@@ -24,7 +24,7 @@
  * @author Sergio Mena
  * @author Xiaoqing Zhu
  */
-#include "dummy-controller.h"
+#include "dummy-controller_gcc.h"
 #include <sstream>
 #include <cassert>
 

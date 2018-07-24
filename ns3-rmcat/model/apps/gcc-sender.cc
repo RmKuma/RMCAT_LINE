@@ -26,9 +26,9 @@
  */
 
 #include "gcc-sender.h"
-#include "rtp-header.h"
-#include "ns3/dummy-controller.h"
-#include "ns3/nada-controller.h"
+#include "rtp-header_gcc.h"
+#include "ns3/dummy-controller_gcc.h"
+#include "ns3/nada-controller_gcc.h"
 #include "ns3/udp-socket-factory.h"
 #include "ns3/packet.h"
 #include "ns3/simulator.h"
@@ -504,7 +504,7 @@ void GccSender::RecvPacket (Ptr<Socket> socket)
             const auto ecn = item.second.m_ecn;
             NS_ASSERT (timestampUs <= nowUs);
         
-            m_controller->processFeedback (nowUs, sequence, timestampUs, l_inter_arrival, l_inter_departure, l_inter_delay_var, m_group_size_inter, m_prev_time, ecn);
+            m_controller->processFeedback (nowUs, sequence, timestampUs, l_inter_arrival, l_inter_departure, l_inter_delay_var, m_group_size, m_prev_time, ecn);
 
             // Increment
             // Group Size, previous packet receive time, previous packet sequence.

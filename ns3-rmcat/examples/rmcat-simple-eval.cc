@@ -29,10 +29,10 @@
  */
 
 #include "ns3/gcc-controller.h"
-#include "ns3/nada-controller.h"
+#include "ns3/nada-controller_gcc.h"
 #include "ns3/gcc-sender.h"
 #include "ns3/gcc-receiver.h"
-#include "ns3/rmcat-constants.h"
+#include "ns3/rmcat-constants_gcc.h"
 #include "ns3/point-to-point-helper.h"
 #include "ns3/data-rate.h"
 #include "ns3/bulk-send-helper.h"
@@ -302,7 +302,7 @@ int main (int argc, char *argv[])
     cmd.AddValue ("shortTcp", "Generate Short TCP flow?", shortTcp);
     cmd.AddValue ("udp",  "Number of UDP flows", nUdp);
     cmd.AddValue ("log", "Turn on logs", log);
-    cmd.AddValue ("gcc", "true: use GCC, false: use dummy", gcc);   // Default is declared in rmcat-sender.cc
+    cmd.AddValue ("gcc", "true: use GCC, false: use dummy", gcc);   // Default is declared in rmcat-sender_gcc.cc
     cmd.Parse (argc, argv);
 
     if (log) {

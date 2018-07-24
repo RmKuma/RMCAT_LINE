@@ -28,7 +28,7 @@
 #ifndef GCC_CONTROLLER_H
 #define GCC_CONTROLLER_H
 
-#include "sender-based-controller.h"
+#include "sender-based-controller_gcc.h"
 #include <sstream>
 #include <cassert>
 #include <math.h>

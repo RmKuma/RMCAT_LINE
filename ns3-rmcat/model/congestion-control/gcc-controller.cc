@@ -25,7 +25,7 @@
  * @author Xiaoqing Zhu
  */
 
-#include "sender-based-controller.h"
+#include "sender-based-controller_gcc.h"
 #include "gcc-controller.h"
 #include <sstream>
 #include <cassert>

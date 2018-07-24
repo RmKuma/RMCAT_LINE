@@ -26,7 +26,7 @@
  */
 
 #include "gcc-receiver.h"
-#include "rmcat-constants.h"
+#include "rmcat-constants_gcc.h"
 #include "ns3/udp-socket-factory.h"
 #include "ns3/packet.h"
 #include "ns3/simulator.h"

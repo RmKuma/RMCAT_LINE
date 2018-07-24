@@ -26,7 +26,7 @@
  * @author Xiaoqing Zhu
  */
 
-#include "rtp-header.h"
+#include "rtp-header_gcc.h"
 
 namespace ns3 {
 

@@ -26,9 +26,9 @@
  */
 
 #include "topo.h"
-#include "ns3/rmcat-sender.h"
-#include "ns3/rmcat-receiver.h"
-#include "ns3/nada-controller.h"
+#include "ns3/rmcat-sender_gcc.h"
+#include "ns3/rmcat-receiver_gcc.h"
+#include "ns3/nada-controller_gcc.h"
 #include "ns3/gcc-controller.h"
 #include <memory>
 #include <limits>
