@@ -18,7 +18,5 @@
 ###############################################################################
 
 def build(bld):
-    obj = bld.create_ns3_program('gcc-example', ['ns3-rmcat'])
-    obj.source = 'gcc-example.cc',
-    obj = bld.create_ns3_program('rmcat-simple-eval', ['ns3-rmcat'])
-    obj.source = 'rmcat-simple-eval.cc',
+    obj = bld.create_ns3_program('rmcat-example', ['ns3-rmcat'])
+    obj.source = 'rmcat-example.cc',

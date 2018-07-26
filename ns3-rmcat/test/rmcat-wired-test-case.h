@@ -30,9 +30,9 @@
 
 
 #include "ns3/wired-topo.h"
-#include "ns3/rmcat-sender_gcc.h"
-#include "ns3/rmcat-receiver_gcc.h"
-#include "ns3/rmcat-constants_gcc.h"
+#include "ns3/rmcat-sender.h"
+#include "ns3/rmcat-receiver.h"
+#include "ns3/rmcat-constants.h"
 #include "ns3/bulk-send-application.h"
 #include "ns3/application-container.h"
 #include "ns3/log.h"

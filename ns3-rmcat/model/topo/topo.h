@@ -41,7 +41,7 @@
 #include "ns3/wifi-module.h"
 #include "ns3/traffic-control-helper.h"
 
-#include "ns3/rmcat-constants_gcc.h"
+#include "ns3/rmcat-constants.h"
 
 namespace ns3 {
 

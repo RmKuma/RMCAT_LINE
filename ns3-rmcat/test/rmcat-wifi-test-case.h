@@ -42,9 +42,9 @@
 #define RMCAT_WIFI_TEST_CASE_H
 
 #include "ns3/wifi-topo.h"
-#include "ns3/rmcat-sender_gcc.h"
-#include "ns3/rmcat-receiver_gcc.h"
-#include "ns3/rmcat-constants_gcc.h"
+#include "ns3/rmcat-sender.h"
+#include "ns3/rmcat-receiver.h"
+#include "ns3/rmcat-constants.h"
 #include "rmcat-common-test.h"
 
 using namespace ns3;
