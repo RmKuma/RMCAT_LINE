@@ -53,13 +53,17 @@ public:
      */
     virtual void reset();
 
+    virtual void UpdateGroupInfo(uint64_t nowUs, uint64_t sequence, uint64_t txTimestamp, uint64_t rxTimestamp, uint64_t packet_size);
+
     /**
-     * Simplistic implementation of feedback packet processing. It simply
-     * prints calculated metrics at regular intervals
+     * Function for 
+     * 
      */
-    virtual bool processRembFeedback(uint64_t nowUs,
+    virtual bool produceRembFeedback(uint64_t nowUs,
                                  uint16_t sequence,
-                                 uint64_t rxTimestampUs,
+                                 uint64_t txTimestampMs,
+				 uint64_t rxTimestampMs,
+				 uint64_t packet_size,
                                  uint8_t ecn=0);
     /**
      * Simplistic implementation of bandwidth getter. It returns a hard-coded
@@ -78,6 +82,35 @@ private:
     uint32_t m_ploss;  /**< packet loss count within configured window */
     float m_plr;       /**< packet loss ratio within packet history window */
     float m_RecvR;     /**< updated receiving rate in bps */
+
+    int curr_group_num_;
+
+    uint16_t curr_group_sseq_;     /* Current group's first packet sequence*/
+    uint64_t curr_group_stime_;    /* Current group's first packet txTimestamp*/
+    uint16_t curr_group_eseq_;     /* Current group's last packet sequence.*/
+    uint64_t curr_group_etime_arrival_;    /* Current group's last packet rxTimestamp.*/
+    uint64_t curr_group_etime_departure_;    /* Current group's last packet txTimestamp.*/
+
+    uint16_t prev_group_sseq_;     /* Previous group's first packet sequence*/
+    uint64_t prev_group_stime_;    /* Previous group's first packet txTimestamp.*/
+    uint16_t prev_group_eseq_;     /* Previous group's last packet sequence.*/
+    uint64_t prev_group_etime_departure_;    /* Previous group's last packet rxTimestamp(arrival time of group's last packet).*/
+    uint64_t prev_group_etime_arrival_;      /* Previous group's last packet txTimestamp.*/
+
+    int curr_group_size_;
+    int prev_group_size_;
+    int group_size_interval_;
+
+    uint16_t prev_pkt_seq_;
+    uint64_t prev_pkt_txTime_;
+    uint64_t prev_pkt_rxTime_;
+
+    int i_arrival_;
+    int i_departure_;
+    int i_delay_var_;
+
+    bool m_group_changed_;
+    bool m_first_packet_;
 };
 
 }
