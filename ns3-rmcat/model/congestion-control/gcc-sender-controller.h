@@ -41,7 +41,7 @@ public:
      GccSenderController();
 
     /** Class destructor */
-    virtual ~GccSenderController();
+    ~GccSenderController();
 
     /**
      * Set the current bandwidth estimation. This can be useful in test environments
@@ -49,28 +49,34 @@ public:
      *
      * @param [in] newBw Bandwidth estimation to overwrite the current estimation
      */
-    virtual void setCurrentBw(float newBw);
+    // virtual void setCurrentBw(float newBw);
 
     /**
      * Reset the internal state of the congestion controller
      */
-    virtual void reset();
+    void reset();
 
     /**
      * Simplistic implementation of feedback packet processing. It simply
      * prints calculated metrics at regular intervals
      */
-    virtual bool processDelayBasedCtrl(uint64_t nowUs,
-                                 uint16_t sequence,
-                                 uint64_t rxTimestampUs, ecn=0);
+    void UpdateLossBasedBitrate(uint64_t nowMs,
+                                float plr);
+    
+    void ApplyDelayBasedBitrate(float DelayBasedEstimateBitrate);
+
     /**
      * Simplistic implementation of bandwidth getter. It returns a hard-coded
      * bandwidth value in bits per second
      */
-    virtual float getBandwidth(uint64_t nowUs) const;
+    // virtual float getBandwidth(uint64_t nowUs) const;
+
+    float getBitrate();
 
 private:
-    void updateMetrics();
+    float m_sending_rate_;  /* Estimated Sending Bps*/
+
+    // void updateMetrics();
     void logStats(uint64_t nowUs) const;
 
     uint64_t m_lastTimeCalcUs;
@@ -79,7 +85,6 @@ private:
     uint64_t m_QdelayUs; /**< estimated queuing delay in microseconds */
     uint32_t m_ploss;  /**< packet loss count within configured window */
     float m_plr;       /**< packet loss ratio within packet history window */
-    float m_RecvR;     /**< updated receiving rate in bps */
 };
 
 }

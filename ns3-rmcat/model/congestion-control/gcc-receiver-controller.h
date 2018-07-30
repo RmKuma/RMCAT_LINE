@@ -17,7 +17,7 @@
 
 /**
  * @file
- * Gcc Receiver Side Controller (Loss Based Congestion Control) interface for gcc ns3 module.
+ * Gcc Receiver Side Controller (Delay Based Congestion Control) interface for gcc ns3 module.
  *
  * @version 0.1.0
  */
@@ -27,10 +27,6 @@
 
 namespace rmcat {
 
-/**
- * Simplistic implementation of a sender-based congestion controller. The
- * algorithm simply returns a constant, hard-coded bandwidth when queried.
- */
 class GccRecvController
 {
 public:
@@ -38,7 +34,7 @@ public:
     GccRecvController();
 
     /** Class destructor */
-    virtual ~GccRecvController();
+    ~GccRecvController();
 
     /**
      * Set the current bandwidth estimation. This can be useful in test environments
@@ -46,34 +42,42 @@ public:
      *
      * @param [in] newBw Bandwidth estimation to overwrite the current estimation
      */
-    virtual void setCurrentBw(float newBw);
+    // void setCurrentBw(float newBw);
 
     /**
      * Reset the internal state of the congestion controller
      */
-    virtual void reset();
+    void reset();
 
-    virtual void UpdateGroupInfo(uint64_t nowUs, uint64_t sequence, uint64_t txTimestamp, uint64_t rxTimestamp, uint64_t packet_size);
 
     /**
-     * Function for 
-     * 
+     * Function for updating delay based controller's bitrate(Ar).
+     * This function will process "Overuse Detecting" and "Overuse Estimating" in internet draft.
      */
-    virtual bool produceRembFeedback(uint64_t nowUs,
+    void UpdateDelayBasedBitrate(uint64_t nowUs,
                                  uint16_t sequence,
                                  uint64_t txTimestampMs,
 				 uint64_t rxTimestampMs,
 				 uint64_t packet_size,
-                                 uint8_t ecn=0);
+                                 uint64_t rxRecv_rate);
     /**
      * Simplistic implementation of bandwidth getter. It returns a hard-coded
      * bandwidth value in bits per second
      */
-    virtual float getBandwidth(uint64_t nowUs) const;
+    // float getBandwidth(uint64_t nowUs) const;
+    
+    /**
+     * Get Funtion of estimated_SendingBps_
+     */
+    float GetBitrate();
 
 private:
-    void updateMetrics();
+    // void updateNetMetrics();
     void logStats(uint64_t nowUs) const;
+
+    void UpdateGroupInfo(uint64_t nowUs, uint64_t sequence, uint64_t txTimestamp, uint64_t rxTimestamp, uint64_t packet_size);
+    
+    float estimated_SendingBps_;  /* Sending rate estimated by delay based controller. */
 
     uint64_t m_lastTimeCalcUs;
     bool m_lastTimeCalcValid;

@@ -17,7 +17,7 @@
 
 /**
  * @file
- * Gcc Receiver Side Controller (Loss Based Congestion Control) implementation for gcc ns3 module.
+ * Gcc Receiver Side Controller (Delay Based Congestion Control) implementation for gcc ns3 module.
  *
  * @version 0.1.0
  */
@@ -26,50 +26,60 @@
 #include <cassert>
 #define BURST_TIME 5
 
+
 namespace rmcat {
 
 GccRecvController::GccRecvController() :
+    estimated_SendingBps_{0},      // Initialized Estimated Sending Bps TODO 
+    
     m_lastTimeCalcUs{0},
     m_lastTimeCalcValid{false},
     m_QdelayUs{0},
     m_ploss{0},
     m_plr{0.f},
-    m_RecvR{0.}
+    m_RecvR{0.},
 
-    curr_group_num_{0}
-    curr_group_sseq_{0}
-    curr_group_stime_{0}
-    curr_group_eseq_{0}
-    curr_group_etime_arrival_{0}
-    curr_group_etime_departure_{0}
+    n_loss{0},
+    n_total_pkt{0},
+    m_lossT{0}, 
+    
+    valid_pkt_sequence_{0},
 
-    prev_group_sseq_{0}
-    prev_group_stime_{0}
-    prev_group_eseq_{0}
-    prev_group_etime_arrival_{0}
-    prev_group_etime_departure_{0}
+    curr_group_num_{0},
+    curr_group_sseq_{0},
+    curr_group_stime_{0},
+    curr_group_eseq_{0},
+    curr_group_etime_arrival_{0},
+    curr_group_etime_departure_{0},
 
-    curr_group_size_{0}
-    prev_group_size_{0}
-    group_size_interval_{0}
+    prev_group_sseq_{0},
+    prev_group_stime_{0},
+    prev_group_eseq_{0},
+    prev_group_etime_arrival_{0},
+    prev_group_etime_departure_{0},
 
-    prev_pkt_seq_{0}
-    prev_pkt_txTime_{0}
-    prev_pkt_rxTime_{0}
+    curr_group_size_{0},
+    prev_group_size_{0},
+    group_size_interval_{0},
 
-    i_arrival_{0}
-    i_departure_{0}
-    i_delay_var_{0}
+    prev_pkt_seq_{0},
+    prev_pkt_txTime_{0},
+    prev_pkt_rxTime_{0},
 
-    m_group_changed_{false}
+    i_arrival_{0},
+    i_departure_{0},
+    i_delay_var_{0},
+
+    m_group_changed_{false},
     m_first_packet_{false}{}
     
 
 GccRecvController::~GccRecvController() {}
 
-void GccRecvController::setCurrentBw(float newBw) {
+/*void GccRecvController::setCurrentBw(float newBw) {
     m_initBw = newBw;
 }
+*/
 
 void GccRecvController::reset() {
     m_lastTimeCalcUs = 0;
@@ -81,6 +91,11 @@ void GccRecvController::reset() {
     m_RecvR = 0.;
 
     curr_group_num_ = 0;
+        
+}
+
+float GccRecvController::getBitrate() {
+    return estimated_SendingBps_;
 }
 
 // txTimestamp : current received packet's txTimestamp in rtp header.
@@ -174,6 +189,7 @@ void GccRecvController::UpdateGroupInfo(uint64_t nowUs, uint16_t sequence, uint6
 	prev_pkt_rxTime_ = rxTimestamp;
 
 	return;
+	t
     }
     else {
         // Groups are change.
@@ -231,9 +247,10 @@ void GccRecvController::UpdateGroupInfo(uint64_t nowUs, uint16_t sequence, uint6
     return;
 }
 
-bool GccRecvController::produceRembFeedback(uint64_t nowUs,
+void GccRecvController::UpdateDelayBasedBitrate(uint64_t nowUs,
                                       uint16_t sequence,
-                                      uint64_t txTimestampMs, uint64_t rxTimestampMs, uint64_t packet_size, uint8_t ecn){
+                                      uint64_t txTimestampMs, uint64_t rxTimestampMs, uint64_t packet_size, 
+				      uint64_t rxRecv_rate, uint8_t ecn){
     UpdateGroupInfo(nowUs, sequence, txTimestamp, rxTimestamp, packet_size);
     
     if(m_group_changed_){
@@ -253,15 +270,16 @@ bool GccRecvController::produceRembFeedback(uint64_t nowUs,
     }
 
 }
+
+/*
 float GccRecvController::getBandwidth(uint64_t nowUs) const {
 
     return m_initBw;
 }
+*/
 
-void GccRecvController::updateMetrics() {
-    uint64_t qdelayUs;
-    bool qdelayOK = getCurrentQdelay(qdelayUs);
-    if (qdelayOK) m_QdelayUs = qdelayUs;
+/*
+void GccRecvController::updateNetMetrics() {
 
     float rrate;
     bool rrateOK = getCurrentRecvRate(rrate);
@@ -275,7 +293,7 @@ void GccRecvController::updateMetrics() {
         m_plr = plr;
     }
 }
-
+*/
 void GccRecvController::logStats(uint64_t nowUs) const {
 
     std::ostringstream os;

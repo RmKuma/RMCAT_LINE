@@ -1,4 +1,5 @@
 /******************************************************************************
+ * q
  * Copyright 2016-2017 Cisco Systems, Inc.                                    *
  *                                                                            *
  * Licensed under the Apache License, Version 2.0 (the "License");            *
@@ -17,7 +18,7 @@
 
 /**
  * @file
- * Gcc Sender Side controller (Delay Based Congestion Control) implementation for gcc ns3module.
+ * Gcc Sender Side controller (Loss Based Congestion Control) implementation for gcc ns3module.
  *
  * @version 0.1.0
  */
@@ -32,14 +33,15 @@ GccSenderController::GccSenderController() :
     m_lastTimeCalcValid{false},
     m_QdelayUs{0},
     m_ploss{0},
-    m_plr{0.f},
-    m_RecvR{0.} {}
+    m_plr{0.f}{}
 
 GccSenderController::~GccSenderController() {}
 
+/*
 void GccSenderController::setCurrentBw(float newBw) {
     m_initBw = newBw;
 }
+*/
 
 void GccSenderController::reset() {
     m_lastTimeCalcUs = 0;
@@ -48,24 +50,33 @@ void GccSenderController::reset() {
     m_QdelayUs = 0;
     m_ploss = 0;
     m_plr = 0.f;
-    m_RecvR = 0.;
 }
 
-bool GccSenderController::processDelayBasedCtrl(uint64_t nowUs,
-                                      uint16_t sequence,
-                                      uint64_t rxTimestampUs,
-                                      uint8_t ecn) {
+float getBitrate() {
+    return m_sending_rate_;
+}
 
- // TODO DelayBasedController Implementation
+void GccSenderController::ApplyDelayBasedBitrate(float DelayBasedEstimateBitrate) {
+    // TODO Called when the REMB messages are received from receiver.
+    // Calculate proper m_sending_rate_ according to delay-based estimated bitrate.
+}
 
+
+void GccSenderController::UpdateLossBasedBitrate(uint64_t nowMs,
+                                                 float plr) {
+
+   // TODO Loss Based Controller Implementation
 
 }
 
+/*
 float GccSenderController::getBandwidth(uint64_t nowUs) const {
 
     return m_initBw;
 }
+*/
 
+/*
 void GccSenderController::updateMetrics() {
     uint64_t qdelayUs;
     bool qdelayOK = getCurrentQdelay(qdelayUs);
@@ -83,6 +94,7 @@ void GccSenderController::updateMetrics() {
         m_plr = plr;
     }
 }
+*/
 
 void GccSenderController::logStats(uint64_t nowUs) const {
 
