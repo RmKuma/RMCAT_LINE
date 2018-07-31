@@ -25,6 +25,8 @@
 #ifndef GCC_RECV_CONTROLLER_H
 #define GCC_RECV_CONTROLLER_H
 
+#include <deque>
+
 namespace rmcat {
 
 class GccRecvController
@@ -115,6 +117,25 @@ private:
 
     bool m_group_changed_;
     bool m_first_packet_;
+
+	/* For Delay Based Calculate */
+	char Hypothesis_;
+
+	/* For Overuse Estimator */
+	void UpdateEstimator(int t_delta, double ts_delta, int size_delta, int nowMs);
+	double UpdateMinFramePeriod(double ts_delta);
+	void UpdateNoiseEstimate(double residual, double ts_delta, bool stable_state);	
+
+	std::deque<double> ts_delta_hist_;
+	uint16_t num_of_deltas_;
+	double slope_;
+	double offset_;
+	double prev_offset_;
+	double E_[2][2];
+	double process_noise_[2];
+	double avg_noise_;
+	double var_noise_;
+
 };
 
 }
