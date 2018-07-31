@@ -136,6 +136,19 @@ private:
 	double avg_noise_;
 	double var_noise_;
 
+	/* For Overuse Detect */
+	void OveruseDetect(double ts_delta, int nowMs);
+	void UpdateThreshold(double modified_offset, int nowMs);
+
+    double k_up_;
+    double k_down_;
+    double overusing_time_threshold_;
+    double threshold_;
+    int64_t last_update_ms_;
+    double time_over_using_;
+    int overuse_counter_;
+	
+
 };
 
 }

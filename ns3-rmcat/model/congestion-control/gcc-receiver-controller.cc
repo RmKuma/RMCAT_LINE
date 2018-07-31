@@ -122,7 +122,7 @@ float GccRecvController::getBitrate() {
 // txTimestamp : current received packet's txTimestamp in rtp header.
 // rxTimestamp : current received packet's rxTimestamp. (packet received time in local)
 // sequence : current received packet's sequence.
-void GccRecvController::UpdateGroupInfo(uint64_t nowUs, uint16_t sequence, uint64_t txTimestamp,
+void GccRecvController::UpdateGroupInfo(uint64_t nowMs, uint16_t sequence, uint64_t txTimestamp,
 					uint64_t rxTimestamp, uint64_t packet_size){
     m_group_changed_ = false;
 
@@ -268,11 +268,11 @@ void GccRecvController::UpdateGroupInfo(uint64_t nowUs, uint16_t sequence, uint6
     return;
 }
 
-void GccRecvController::UpdateDelayBasedBitrate(uint64_t nowUs,
+void GccRecvController::UpdateDelayBasedBitrate(uint64_t nowMs,
                                       uint16_t sequence,
                                       uint64_t txTimestampMs, uint64_t rxTimestampMs, uint64_t packet_size, 
 				      uint64_t rxRecv_rate, uint8_t ecn){
-    UpdateGroupInfo(nowUs, sequence, txTimestamp, rxTimestamp, packet_size);
+    UpdateGroupInfo(nowMs, sequence, txTimestamp, rxTimestamp, packet_size);
     
     if(m_group_changed_){
         m_group_changed_ = false;
@@ -288,14 +288,16 @@ void GccRecvController::UpdateDelayBasedBitrate(uint64_t nowUs,
 
 	// TODO
 		
-		UpdateEstimator(i_arrival_, i_departure_, group_size_interval_, nowUs * 1000);
+		UpdateEstimator(i_arrival_, i_departure_, group_size_interval_, nowMs);
+		OveruseDetect(i_departure_, nowMs);
+
 
     }
 
 }
 
 /*
-float GccRecvController::getBandwidth(uint64_t nowUs) const {
+float GccRecvController::getBandwidth(uint64_t nowMs) const {
 
     return m_initBw;
 }
@@ -317,14 +319,14 @@ void GccRecvController::updateNetMetrics() {
     }
 }
 */
-void GccRecvController::logStats(uint64_t nowUs) const {
+void GccRecvController::logStats(uint64_t nowMs) const {
 
     std::ostringstream os;
     os << std::fixed;
     os.precision(RMCAT_LOG_PRINT_PRECISION);
 
     os  << " algo:dummy " << m_id
-        << " ts: "     << (nowUs / 1000)
+        << " ts: "     << (nowMs / 1000)
         << " loglen: " << m_packetHistory.size()
         << " qdel: "   << (m_QdelayUs / 1000)
         << " ploss: "  << m_ploss
@@ -429,6 +431,66 @@ void UpdateNoiseEstimate(double residual, double ts_delta, bool stable_state){
     if (var_noise_ < 1) {
       var_noise_ = 1;
     }
+}
+
+
+void OveruseDetect(double ts_delta, int nowMs){
+    if (num_of_deltas < 2) {
+      return 'N';
+    }
+    const double T = std::min(num_of_deltas_,60) * offset_; // kMinNumDeltas = 60
+    if (T > threshold_) {
+      if (time_over_using_ == -1) {
+        // Initialize the timer. Assume that we've been
+        // over-using half of the time since the previous
+        // sample. 
+        time_over_using_ =  ts_delta / 2;
+      } else {
+         // Increment timer
+        time_over_using_ += ts_delta;
+      }   
+      overuse_counter_++;
+      if (time_over_using_ > overusing_time_threshold_ && overuse_counter_ > 1) {
+        if (offset_ >= prev_offset_) {
+          time_over_using_ = 0;
+          overuse_counter_ = 0;
+          Hypothesis_ = 'O'; //Overusing
+        }
+      }
+    } else if (T < -threshold_) {
+      time_over_using_ = -1;
+      overuse_counter_ = 0;
+      Hypothesis_ = 'U'; //Underusing
+    } else {
+      time_over_using_ = -1;
+      overuse_counter_ = 0;
+      Hypothesis_ = 'N';
+    }
+  
+    UpdateThreshold(T, nowMs);
+
+    return Hypothesis_;
+}
+
+void UpdateThreshold(double modified_offset, int nowMs){
+    if (last_update_ms_ == -1)
+      last_update_ms_ = now_ms;
+
+    if (fabs(modified_offset) > threshold_ + 15.0) { //kMaxAdaptOffsetMs = 15.0
+      // Avoid adapting the threshold to big latency spikes, caused e.g.,
+      // by a sudden capacity drop.
+      last_update_ms_ = nowMs;
+      return;
+    }
+
+    const double k = fabs(modified_offset) < threshold_ ? k_down_ : k_up_;
+    const int64_t kMaxTimeDeltaMs = 100;
+    int64_t time_delta_ms = std::min(nowMs - last_update_ms_, kMaxTimeDeltaMs);
+    threshold_ += k * (fabs(modified_offset) - threshold_) * time_delta_ms;
+    // avoid using SafeClamp, change >> threshold_ = rtc::SafeClamp(threshold_, 6.f, 600.f); << to under line.
+	threshold_ = threshold_ < 6.f ? 6.f : threshold_ > 600.f ? 600.f : threshold_;
+    last_update_ms_ = nowMs;
+
 }
 
 
