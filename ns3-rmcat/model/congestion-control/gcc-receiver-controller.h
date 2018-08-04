@@ -26,6 +26,12 @@
 #define GCC_RECV_CONTROLLER_H
 
 #include <deque>
+#include <algorithm>
+#include <cassert>
+#include <cmath>
+#include <cstdio>
+#include <string>
+
 
 namespace rmcat {
 
@@ -144,10 +150,36 @@ private:
     double k_down_;
     double overusing_time_threshold_;
     double threshold_;
-    int64_t last_update_ms_;
+    int64_t last_threshold_update_ms_;
     double time_over_using_;
     int overuse_counter_;
 	
+
+	/* For Calculate Delay Based Bitrate */
+	uint32_t UpdateBitrate(char bw_state, uint64_t incoming_bitrate, int64_t nowMs);
+    int GetNearMaxIncreaseRateBps() const;
+    uint32_t ChangeBitrate(uint32_t new_bitrate_bps, char bw_state, uint64_t incoming_bitrate, int64_t nowMs);
+    uint32_t ClampBitrate(uint32_t new_bitrate_bps, uint32_t incoming_bitrate_bps) const;
+    uint32_t MultiplicativeRateIncrease(int64_t nowMs, int64_t lastMs, uint32_t current_bitrate_bps) const;
+    uint32_t AdditiveRateIncrease(int64_t nowMs, int64_t lastMs) const;
+    void UpdateMaxBitrateEstimate(float incoming_bitrate_kbps);
+    void ChangeState(char bw_state, int64_t nowMs);
+    void ChangeRegion(char region);
+
+    uint32_t min_configured_bitrate_bps_;   
+    uint32_t max_configured_bitrate_bps_;   
+    uint32_t current_bitrate_bps_;          
+    uint32_t latest_incoming_bitrate_bps_;  
+    float avg_max_bitrate_kbps_;            
+    float var_max_bitrate_kbps_;            
+    char rate_control_state_;   
+    char rate_control_region_; 
+    int64_t time_last_bitrate_change_;      
+    int64_t time_first_incoming_estimate_;  
+    bool bitrate_is_initialized_;           
+    float beta_;                            
+    int64_t rtt_;                           
+
 
 };
 

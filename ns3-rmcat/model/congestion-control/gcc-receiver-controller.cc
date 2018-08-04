@@ -81,8 +81,30 @@ GccRecvController::GccRecvController() :
     process_offset_{},
     avg_noise_{0.0},
     var_noise_{50},
-    ts_delta_hist_{}
+    ts_delta_hist_{},
     
+    k_up_(0.0087),
+    k_down_(0.039),
+    overusing_time_threshold_(100),
+    threshold_(12.5),
+    last_update_ms_(-1),
+    time_over_using_(-1),
+    overuse_counter_(0),
+    Hypothesis_('N'),
+
+    min_configured_bitrate_bps_(10000), 
+    max_configured_bitrate_bps_(30000000),                                  
+    current_bitrate_bps_(max_configured_bitrate_bps_),                      
+    latest_incoming_bitrate_bps_(current_bitrate_bps_),                     
+    avg_max_bitrate_kbps_(-1.0f),                                           
+    var_max_bitrate_kbps_(0.4f),                                            
+    rate_control_state_('H'), //Hold mode                                           
+    rate_control_region_('M'), //MaxUnkown                                   
+    time_last_bitrate_change_(-1),                                          
+    time_first_incoming_estimate_(-1),                                      
+    bitrate_is_initialized_(false),                                         
+    beta_(0.85f),                                     
+    rtt_(200) //Initial Rtt can change                                         
 
     {
         E_[0][0] = 100;           
@@ -290,7 +312,7 @@ void GccRecvController::UpdateDelayBasedBitrate(uint64_t nowMs,
 		
 		UpdateEstimator(i_arrival_, i_departure_, group_size_interval_, nowMs);
 		OveruseDetect(i_departure_, nowMs);
-
+		estimated_SendingBps_ = UpdateBitrate( Hypothesis_, rxRecv_rate, nowMs);
 
     }
 
@@ -336,6 +358,8 @@ void GccRecvController::logStats(uint64_t nowMs) const {
     logMessage(os.str());
 }
 
+
+/* In "UpdateEstimator", Calculate offset by using KALMAN filter. WE CALL THIS FUNCTION FOR CALCULATE BITRATE */
 void UpdateEstimator(int t_delta, double ts_delta, int size_delta, int nowMs){
     const double min_frame_period = UpdateMinFramePeriod(ts_delta);
 	const double t_ts_delta = t_delta - ts_delta;
@@ -397,6 +421,7 @@ void UpdateEstimator(int t_delta, double ts_delta, int size_delta, int nowMs){
     offset_ = offset_ + K[1] * residual;
 }
 
+/* "UpdateMinFramePeriod" save the history of inter departure time, and return the min value*/
 double UpdateMinFramePeriod(double ts_delta){
 	
     double m_contrme_period = ts_delta;                           
@@ -410,6 +435,7 @@ double UpdateMinFramePeriod(double ts_delta){
     return min_frame_period;                                      
 }
 
+/* "UpdateNoiseEstimate" calculate NOISE for Estimator */
 void UpdateNoiseEstimate(double residual, double ts_delta, bool stable_state){
 	if (!stable_state) {
       return;
@@ -433,7 +459,7 @@ void UpdateNoiseEstimate(double residual, double ts_delta, bool stable_state){
     }
 }
 
-
+/* "OveruseDetect" change the signal by comparing threshold to offset calculated in Estimator. WE CALL THIS FUNCTION TO CALCULATE BITRATE */
 void OveruseDetect(double ts_delta, int nowMs){
     if (num_of_deltas < 2) {
       return 'N';
@@ -472,26 +498,219 @@ void OveruseDetect(double ts_delta, int nowMs){
     return Hypothesis_;
 }
 
+/* "UpdateThreshold" update threshold, and the output will be dynamic value */
 void UpdateThreshold(double modified_offset, int nowMs){
-    if (last_update_ms_ == -1)
-      last_update_ms_ = now_ms;
+    if (last_threshold_update_ms_ == -1)
+      last_threshold_update_ms_ = nowMs;
 
     if (fabs(modified_offset) > threshold_ + 15.0) { //kMaxAdaptOffsetMs = 15.0
       // Avoid adapting the threshold to big latency spikes, caused e.g.,
       // by a sudden capacity drop.
-      last_update_ms_ = nowMs;
+      last_threshold_update_ms_ = nowMs;
       return;
     }
 
     const double k = fabs(modified_offset) < threshold_ ? k_down_ : k_up_;
     const int64_t kMaxTimeDeltaMs = 100;
-    int64_t time_delta_ms = std::min(nowMs - last_update_ms_, kMaxTimeDeltaMs);
+    int64_t time_delta_ms = std::min(nowMs - last_threshold_update_ms_, kMaxTimeDeltaMs);
     threshold_ += k * (fabs(modified_offset) - threshold_) * time_delta_ms;
     // avoid using SafeClamp, change >> threshold_ = rtc::SafeClamp(threshold_, 6.f, 600.f); << to under line.
 	threshold_ = threshold_ < 6.f ? 6.f : threshold_ > 600.f ? 600.f : threshold_;
-    last_update_ms_ = nowMs;
+    last_threshold_update_ms_ = nowMs;
 
 }
 
+uint32_t UpdateBitrate(char bw_state, uint64_t incoming_bitrate, int64_t nowMs) {   
+ 
+  // Set the initial bit rate value to what we're receiving the first half       
+  // second.                                                                     
+  // TODO(bugs.webrtc.org/9379): The comment above doesn't match to the code.    
+  
+  if (!bitrate_is_initialized_) {                                                
+    const int64_t kInitializationTimeMs = 5000;                                  
+    if (time_first_incoming_estimate_ < 0) {                                     
+      if (incoming_bitrate)                                               
+        time_first_incoming_estimate_ = nowMs;                                  
+    } else if (nowMs - time_first_incoming_estimate_ > kInitializationTimeMs && 
+               incoming_bitrate) {                                        
+      current_bitrate_bps_ = incoming_bitrate;                           
+      bitrate_is_initialized_ = true;                                            
+    }                                                                            
+  }                                                                              
+                                                                                 
+  current_bitrate_bps_ = ChangeBitrate(current_bitrate_bps_, bw_state, incoming_bitrate, nowMs);    
+  return current_bitrate_bps_;                                                   
+}                                                                                
 
-}
+int GetNearMaxIncreaseRateBps() const {                         
+  double bits_per_frame = static_cast<double>(current_bitrate_bps_) / 30.0;      
+  double packets_per_frame = std::ceil(bits_per_frame / (8.0 * 1200.0));         
+  double avg_packet_size_bits = bits_per_frame / packets_per_frame;              
+                                                                                 
+  // Approximate the over-use estimator delay to 100 ms.                         
+  const int64_t response_time = (rtt_ + 100) * 2  // Or this value "rtt_ + 100" ... ;  
+  constexpr double kMinIncreaseRateBps = 4000;                                   
+  return static_cast<int>(std::max(                                              
+      kMinIncreaseRateBps, (avg_packet_size_bits * 1000) / response_time));      
+}                                                                                
+
+uint32_t ChangeBitrate(uint32_t new_bitrate_bps, char bw_state, uint64_t incoming_bitrate, 						 int64_t nowMs) {                         
+  uint32_t incoming_bitrate_bps;
+  if(incoming_bitrate) incoming_bitrate_bps = incoming_bitrate;
+  else incoming_bitrate_bps = latest_incoming_bitrate_bps_;                                                               
+  if (incoming_bitrate)                                                     
+    latest_incoming_bitrate_bps_ = incoming_bitrate;                       
+                                                                                  
+  // An over-use should always trigger us to reduce the bitrate, even though      
+  // we have not yet established our first estimate. By acting on the over-use,   
+  // we will end up with a valid estimate.                                        
+  if (!bitrate_is_initialized_ && bw_state != 'O')                             
+    return current_bitrate_bps_;                                                  
+                                                                                  
+  ChangeState(bw_state, nowMs);                                                     
+  // Calculated here because it's used in multiple places.                        
+  const float incoming_bitrate_kbps = incoming_bitrate_bps / 1000.0f;             
+  // Calculate the max bit rate std dev given the normalized                      
+  // variance and the current incoming bit rate.                                  
+  const float std_max_bit_rate =                                                  
+      sqrt(var_max_bitrate_kbps_ * avg_max_bitrate_kbps_);                        
+  switch (rate_control_state_) {                                                  
+    case 'H': //Hold mode                                                                
+      break;                                                                      
+                                                                                  
+    case 'I': //Increase mode                                                             
+      if (avg_max_bitrate_kbps_ >= 0 &&                                           
+          incoming_bitrate_kbps >                                                 
+              avg_max_bitrate_kbps_ + 3 * std_max_bit_rate) {                     
+        ChangeRegion('M');                                              
+        avg_max_bitrate_kbps_ = -1.0;                                             
+      }                                                                           
+      if (rate_control_region_ == 'N') {                                   
+        uint32_t additive_increase_bps =                                          
+            AdditiveRateIncrease(nowMs, time_last_bitrate_change_);              
+        new_bitrate_bps += additive_increase_bps;                                 
+      } else {                                                                    
+        uint32_t multiplicative_increase_bps = MultiplicativeRateIncrease(        
+            nowMs, time_last_bitrate_change_, new_bitrate_bps);                  
+        new_bitrate_bps += multiplicative_increase_bps;                           
+      }                                                                           
+                                                                                  
+      time_last_bitrate_change_ = nowMs;                                         
+      break;                                                                      
+                                                                                  
+    case 'D': //Decrease mode                                                             
+      // Set bit rate to something slightly lower than max                        
+      // to get rid of any self-induced delay.                                    
+      new_bitrate_bps =                                                           
+          static_cast<uint32_t>(beta_ * incoming_bitrate_bps + 0.5);              
+      if (new_bitrate_bps > current_bitrate_bps_) {                               
+        // Avoid increasing the rate when over-using.                             
+        if (rate_control_region_ != 'M') {                              
+          new_bitrate_bps = static_cast<uint32_t>(                                
+              beta_ * avg_max_bitrate_kbps_ * 1000 + 0.5f);                       
+        }                                                                         
+        new_bitrate_bps = std::min(new_bitrate_bps, current_bitrate_bps_);        
+      }                                                                           
+      ChangeRegion('N');
+
+      if (incoming_bitrate_kbps < avg_max_bitrate_kbps_ - 3 * std_max_bit_rate) {   
+        avg_max_bitrate_kbps_ = -1.0f;                                             
+      }                                                                            
+                                                                                   
+      bitrate_is_initialized_ = true;                                              
+      UpdateMaxBitRateEstimate(incoming_bitrate_kbps);                             
+      // Stay on hold until the pipes are cleared.                                 
+      rate_control_state_ = 'H';                                               
+      time_last_bitrate_change_ = nowMs;                                          
+      break;                                                                       
+                                                                                   
+    default:                                                                       
+      assert(false);                                                               
+  }                                                                                
+  return ClampBitrate(new_bitrate_bps, incoming_bitrate_bps);                      
+}                                                                                       
+
+uint32_t ClampBitrate(uint32_t new_bitrate_bps, uint32_t incoming_bitrate_bps) const { 
+
+  // Don't change the bit rate if the send side is too far off.               
+  // We allow a bit more lag at very low rates to not too easily get stuck if 
+  // the encoder produces uneven outputs.                                     
+  const uint32_t max_bitrate_bps =                                            
+      static_cast<uint32_t>(1.5f * incoming_bitrate_bps) + 10000;             
+  if (new_bitrate_bps > current_bitrate_bps_ &&                               
+      new_bitrate_bps > max_bitrate_bps) {                                    
+    new_bitrate_bps = std::max(current_bitrate_bps_, max_bitrate_bps);        
+  }                                                                           
+  new_bitrate_bps = std::max(new_bitrate_bps, min_configured_bitrate_bps_);   
+  return new_bitrate_bps;                                                     
+}                                                                             
+
+uint32_t MultiplicativeRateIncrease(int64_t nowMs, int64_t lastMs, 
+                                    uint32_t current_bitrate_bps) const {                
+  double alpha = 1.08;                                                             
+  if (lastMs > -1) {                                                              
+    auto time_since_last_update_ms = std::min(nowMs - lastMs, 1000);            
+    alpha = pow(alpha, time_since_last_update_ms / 1000.0);                        
+  }                                                                                
+  uint32_t multiplicative_increase_bps =                                           
+      std::max(current_bitrate_bps * (alpha - 1.0), 1000.0);                       
+  return multiplicative_increase_bps;                                              
+}                                                                                  
+                                                                                   
+uint32_t AdditiveRateIncrease(int64_t nowMs, int64_t lastMs) const {    
+  return static_cast<uint32_t>((now_ms - last_ms) * GetNearMaxIncreaseRateBps() / 1000); 
+}                                                                                  
+                                                                                   
+void UpdateMaxBitRateEstimate(float incoming_bitrate_kbps) {      
+  const float alpha = 0.05f;                                                       
+  if (avg_max_bitrate_kbps_ == -1.0f) {                                            
+    avg_max_bitrate_kbps_ = incoming_bitrate_kbps;                                 
+  } else {                                                                         
+    avg_max_bitrate_kbps_ =                                                        
+        (1 - alpha) * avg_max_bitrate_kbps_ + alpha * incoming_bitrate_kbps;       
+  }                                                                                
+  // Estimate the max bit rate variance and normalize the variance                 
+  // with the average max bit rate.                                                
+  const float norm = std::max(avg_max_bitrate_kbps_, 1.0f);                        
+  var_max_bitrate_kbps_ =                                                          
+      (1 - alpha) * var_max_bitrate_kbps_ +                                        
+      alpha * (avg_max_bitrate_kbps_ - incoming_bitrate_kbps) *                    
+          (avg_max_bitrate_kbps_ - incoming_bitrate_kbps) / norm;                  
+  // 0.4 ~= 14 kbit/s at 500 kbit/s                                                
+  if (var_max_bitrate_kbps_ < 0.4f) {                                              
+    var_max_bitrate_kbps_ = 0.4f;                                                  
+  }                                                                                
+  // 2.5f ~= 35 kbit/s at 500 kbit/s                                               
+  if (var_max_bitrate_kbps_ > 2.5f) {                                              
+    var_max_bitrate_kbps_ = 2.5f;                                                  
+  }                                                                                
+}                                                                                  
+
+void ChangeState (char bw_state, int64_t nowMs) {             
+  switch (bw_state) {                                     
+    case 'N': //normal -> if state is hold, change to Increase mode                 
+      if (rate_control_state_ == 'H') {                     
+        time_last_bitrate_change_ = nowMs;                     
+        rate_control_state_ = 'I';                      
+      }                                                         
+      break;                                                    
+    case 'O': //overusing -> if state is not decrease mode, change to Decrease mode      
+      if (rate_control_state_ != 'D') {                 
+        rate_control_state_ = 'D';                      
+      }                                                         
+      break;                                                    
+    case 'U': //underusing -> change to Hold mode                        
+      rate_control_state_ = 'H';                            
+      break;                                                    
+    default:                                                    
+      assert(false);                                            
+  }                                                             
+}                                                               
+                                                                
+void ChangeRegion(char region) {  
+  rate_control_region_ = region;                                
+}            
+
+
+
+}                                                   }
