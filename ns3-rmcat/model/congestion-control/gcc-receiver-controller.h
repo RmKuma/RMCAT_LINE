@@ -67,7 +67,7 @@ public:
                                  uint64_t txTimestampMs,
 				 uint64_t rxTimestampMs,
 				 uint64_t packet_size,
-                                 uint64_t rxRecv_rate);
+                                 uint64_t rxRecv_rate, uint8_t ecn);
     /**
      * Simplistic implementation of bandwidth getter. It returns a hard-coded
      * bandwidth value in bits per second
@@ -83,7 +83,7 @@ private:
     // void updateNetMetrics();
     void logStats(uint64_t nowUs) const;
 
-    void UpdateGroupInfo(uint64_t nowUs, uint64_t sequence, uint64_t txTimestamp, uint64_t rxTimestamp, uint64_t packet_size);
+    void UpdateGroupInfo(uint64_t nowUs, uint16_t sequence, uint64_t txTimestamp, uint64_t rxTimestamp, uint64_t packet_size);
     
     float estimated_SendingBps_;  /* Sending rate estimated by delay based controller. */
 
@@ -95,8 +95,12 @@ private:
     float m_plr;       /**< packet loss ratio within packet history window */
     float m_RecvR;     /**< updated receiving rate in bps */
 
-    int curr_group_num_;
+    int n_loss;
+    int n_total_pkt;
+    int m_lossT;
+    int valid_pkt_sequence_;
 
+    int curr_group_num_;
     uint16_t curr_group_sseq_;     /* Current group's first packet sequence*/
     uint64_t curr_group_stime_;    /* Current group's first packet txTimestamp*/
     uint16_t curr_group_eseq_;     /* Current group's last packet sequence.*/
@@ -133,7 +137,7 @@ private:
 	void UpdateNoiseEstimate(double residual, double ts_delta, bool stable_state);	
 
 	std::deque<double> ts_delta_hist_;
-	uint16_t num_of_deltas_;
+	int num_of_deltas_;
 	double slope_;
 	double offset_;
 	double prev_offset_;
@@ -143,7 +147,7 @@ private:
 	double var_noise_;
 
 	/* For Overuse Detect */
-	void OveruseDetect(double ts_delta, int nowMs);
+    char OveruseDetect(double ts_delta, int nowMs);
 	void UpdateThreshold(double modified_offset, int nowMs);
 
     double k_up_;
@@ -162,7 +166,7 @@ private:
     uint32_t ClampBitrate(uint32_t new_bitrate_bps, uint32_t incoming_bitrate_bps) const;
     uint32_t MultiplicativeRateIncrease(int64_t nowMs, int64_t lastMs, uint32_t current_bitrate_bps) const;
     uint32_t AdditiveRateIncrease(int64_t nowMs, int64_t lastMs) const;
-    void UpdateMaxBitrateEstimate(float incoming_bitrate_kbps);
+    void UpdateMaxBitRateEstimate(float incoming_bitrate_kbps);
     void ChangeState(char bw_state, int64_t nowMs);
     void ChangeRegion(char region);
 

@@ -71,14 +71,14 @@ GccRecvController::GccRecvController() :
     i_delay_var_{0},
 
     m_group_changed_{false},
-    m_first_packet_{false}{},
+    m_first_packet_{false},
 
     num_of_deltas_{0},
     slope_{8.0/512.0},
     offset_{0},
-    prev_offset{0},
+    prev_offset_{0},
     E_{},
-    process_offset_{},
+    process_noise_{},
     avg_noise_{0.0},
     var_noise_{50},
     ts_delta_hist_{},
@@ -87,7 +87,7 @@ GccRecvController::GccRecvController() :
     k_down_(0.039),
     overusing_time_threshold_(100),
     threshold_(12.5),
-    last_update_ms_(-1),
+    last_threshold_update_ms_(-1),
     time_over_using_(-1),
     overuse_counter_(0),
     Hypothesis_('N'),
@@ -137,7 +137,7 @@ void GccRecvController::reset() {
         
 }
 
-float GccRecvController::getBitrate() {
+float GccRecvController::GetBitrate() {
     return estimated_SendingBps_;
 }
 
@@ -204,7 +204,7 @@ void GccRecvController::UpdateGroupInfo(uint64_t nowMs, uint16_t sequence, uint6
 	    curr_group_size_ = 0;
 
 	    //Update new group information.
-	    curr_group_num++;
+	    curr_group_num_++;
 	    curr_group_sseq_ = sequence;
 	    curr_group_stime_ = txTimestamp;
 
@@ -215,7 +215,7 @@ void GccRecvController::UpdateGroupInfo(uint64_t nowMs, uint16_t sequence, uint6
 
 	prev_pkt_seq_ = sequence;
 	prev_pkt_txTime_ = txTimestamp;
-	prev_pkt_rxTime_ = rxTimestamp:;
+	prev_pkt_rxTime_ = rxTimestamp;
 
 	return;
     }
@@ -232,7 +232,6 @@ void GccRecvController::UpdateGroupInfo(uint64_t nowMs, uint16_t sequence, uint6
 	prev_pkt_rxTime_ = rxTimestamp;
 
 	return;
-	t
     }
     else {
         // Groups are change.
@@ -273,7 +272,7 @@ void GccRecvController::UpdateGroupInfo(uint64_t nowMs, uint16_t sequence, uint6
 	    curr_group_size_ = 0;
 
 	    //Update new group information.
-	    curr_group_num++;
+	    curr_group_num_++;
 	    curr_group_sseq_ = sequence;
 	    curr_group_stime_ = txTimestamp;
 
@@ -285,7 +284,7 @@ void GccRecvController::UpdateGroupInfo(uint64_t nowMs, uint16_t sequence, uint6
 
     prev_pkt_seq_ = sequence;
     prev_pkt_txTime_ = txTimestamp;
-    prev_pkt_rxTime_ = rxTimestamp:;
+    prev_pkt_rxTime_ = rxTimestamp;
 
     return;
 }
@@ -294,7 +293,7 @@ void GccRecvController::UpdateDelayBasedBitrate(uint64_t nowMs,
                                       uint16_t sequence,
                                       uint64_t txTimestampMs, uint64_t rxTimestampMs, uint64_t packet_size, 
 				      uint64_t rxRecv_rate, uint8_t ecn){
-    UpdateGroupInfo(nowMs, sequence, txTimestamp, rxTimestamp, packet_size);
+    UpdateGroupInfo(nowMs, sequence, txTimestampMs, rxTimestampMs, packet_size);
     
     if(m_group_changed_){
         m_group_changed_ = false;
@@ -342,25 +341,25 @@ void GccRecvController::updateNetMetrics() {
 }
 */
 void GccRecvController::logStats(uint64_t nowMs) const {
-
+	/* NEED TO MODIFY
     std::ostringstream os;
     os << std::fixed;
-    os.precision(RMCAT_LOG_PRINT_PRECISION);
 
-    os  << " algo:dummy " << m_id
+    os  << " algo:dummy : none "
         << " ts: "     << (nowMs / 1000)
-        << " loglen: " << m_packetHistory.size()
+        << " loglen: none "
         << " qdel: "   << (m_QdelayUs / 1000)
         << " ploss: "  << m_ploss
         << " plr: "    << m_plr
         << " rrate: "  << m_RecvR
-        << " srate: "  << m_initBw;
+        << " srate: none ";
     logMessage(os.str());
+    */
 }
 
 
 /* In "UpdateEstimator", Calculate offset by using KALMAN filter. WE CALL THIS FUNCTION FOR CALCULATE BITRATE */
-void UpdateEstimator(int t_delta, double ts_delta, int size_delta, int nowMs){
+void GccRecvController::UpdateEstimator(int t_delta, double ts_delta, int size_delta, int nowMs){
     const double min_frame_period = UpdateMinFramePeriod(ts_delta);
 	const double t_ts_delta = t_delta - ts_delta;
 	double fs_delta = size_delta;
@@ -374,8 +373,8 @@ void UpdateEstimator(int t_delta, double ts_delta, int size_delta, int nowMs){
     E_[0][0] += process_noise_[0];
     E_[1][1] += process_noise_[1];
 
-	if ((Hypothesis == 'O' &&  offset_ < prev_offset_) ||
-    (Hypothesis == 'U' &&  offset_ > prev_offset_)) {
+	if ((Hypothesis_ == 'O' &&  offset_ < prev_offset_) ||
+    (Hypothesis_ == 'U' &&  offset_ > prev_offset_)) {
       E_[1][1] += 10 * process_noise_[1];
     }
 
@@ -385,7 +384,7 @@ void UpdateEstimator(int t_delta, double ts_delta, int size_delta, int nowMs){
 
 
     const double residual = t_ts_delta - slope_ * h[0] - offset_;
-    const bool in_stable_state =  (Hypothesis == 'N');
+    const bool in_stable_state =  (Hypothesis_ == 'N');
     const double max_residual = 3.0 * sqrt(var_noise_);
     // We try to filter out very late frames. For instance periodic key
     // frames doesn't fit the Gaussian model well.
@@ -422,9 +421,9 @@ void UpdateEstimator(int t_delta, double ts_delta, int size_delta, int nowMs){
 }
 
 /* "UpdateMinFramePeriod" save the history of inter departure time, and return the min value*/
-double UpdateMinFramePeriod(double ts_delta){
+double GccRecvController::UpdateMinFramePeriod(double ts_delta){
 	
-    double m_contrme_period = ts_delta;                           
+    double min_frame_period = ts_delta;                           
     if (ts_delta_hist_.size() >= 60) {  
       ts_delta_hist_.pop_front();                                 
     }                                                             
@@ -436,7 +435,7 @@ double UpdateMinFramePeriod(double ts_delta){
 }
 
 /* "UpdateNoiseEstimate" calculate NOISE for Estimator */
-void UpdateNoiseEstimate(double residual, double ts_delta, bool stable_state){
+void GccRecvController::UpdateNoiseEstimate(double residual, double ts_delta, bool stable_state){
 	if (!stable_state) {
       return;
     }
@@ -460,8 +459,8 @@ void UpdateNoiseEstimate(double residual, double ts_delta, bool stable_state){
 }
 
 /* "OveruseDetect" change the signal by comparing threshold to offset calculated in Estimator. WE CALL THIS FUNCTION TO CALCULATE BITRATE */
-void OveruseDetect(double ts_delta, int nowMs){
-    if (num_of_deltas < 2) {
+char GccRecvController::OveruseDetect(double ts_delta, int nowMs){
+    if (num_of_deltas_ < 2) {
       return 'N';
     }
     const double T = std::min(num_of_deltas_,60) * offset_; // kMinNumDeltas = 60
@@ -499,7 +498,7 @@ void OveruseDetect(double ts_delta, int nowMs){
 }
 
 /* "UpdateThreshold" update threshold, and the output will be dynamic value */
-void UpdateThreshold(double modified_offset, int nowMs){
+void GccRecvController::UpdateThreshold(double modified_offset, int nowMs){
     if (last_threshold_update_ms_ == -1)
       last_threshold_update_ms_ = nowMs;
 
@@ -520,7 +519,7 @@ void UpdateThreshold(double modified_offset, int nowMs){
 
 }
 
-uint32_t UpdateBitrate(char bw_state, uint64_t incoming_bitrate, int64_t nowMs) {   
+uint32_t GccRecvController::UpdateBitrate(char bw_state, uint64_t incoming_bitrate, int64_t nowMs) {   
  
   // Set the initial bit rate value to what we're receiving the first half       
   // second.                                                                     
@@ -542,19 +541,19 @@ uint32_t UpdateBitrate(char bw_state, uint64_t incoming_bitrate, int64_t nowMs) 
   return current_bitrate_bps_;                                                   
 }                                                                                
 
-int GetNearMaxIncreaseRateBps() const {                         
+int GccRecvController::GetNearMaxIncreaseRateBps() const {                         
   double bits_per_frame = static_cast<double>(current_bitrate_bps_) / 30.0;      
   double packets_per_frame = std::ceil(bits_per_frame / (8.0 * 1200.0));         
   double avg_packet_size_bits = bits_per_frame / packets_per_frame;              
                                                                                  
   // Approximate the over-use estimator delay to 100 ms.                         
-  const int64_t response_time = (rtt_ + 100) * 2  // Or this value "rtt_ + 100" ... ;  
-  constexpr double kMinIncreaseRateBps = 4000;                                   
+  const int64_t response_time = (rtt_ + 100) * 2;  // Or this value "rtt_ + 100" ... ;  
+  const double kMinIncreaseRateBps = 4000;                                   
   return static_cast<int>(std::max(                                              
       kMinIncreaseRateBps, (avg_packet_size_bits * 1000) / response_time));      
 }                                                                                
 
-uint32_t ChangeBitrate(uint32_t new_bitrate_bps, char bw_state, uint64_t incoming_bitrate, 						 int64_t nowMs) {                         
+uint32_t GccRecvController::ChangeBitrate(uint32_t new_bitrate_bps, char bw_state, uint64_t incoming_bitrate, 						 int64_t nowMs) {                         
   uint32_t incoming_bitrate_bps;
   if(incoming_bitrate) incoming_bitrate_bps = incoming_bitrate;
   else incoming_bitrate_bps = latest_incoming_bitrate_bps_;                                                               
@@ -630,7 +629,7 @@ uint32_t ChangeBitrate(uint32_t new_bitrate_bps, char bw_state, uint64_t incomin
   return ClampBitrate(new_bitrate_bps, incoming_bitrate_bps);                      
 }                                                                                       
 
-uint32_t ClampBitrate(uint32_t new_bitrate_bps, uint32_t incoming_bitrate_bps) const { 
+uint32_t GccRecvController::ClampBitrate(uint32_t new_bitrate_bps, uint32_t incoming_bitrate_bps) const { 
 
   // Don't change the bit rate if the send side is too far off.               
   // We allow a bit more lag at very low rates to not too easily get stuck if 
@@ -645,11 +644,11 @@ uint32_t ClampBitrate(uint32_t new_bitrate_bps, uint32_t incoming_bitrate_bps) c
   return new_bitrate_bps;                                                     
 }                                                                             
 
-uint32_t MultiplicativeRateIncrease(int64_t nowMs, int64_t lastMs, 
+uint32_t GccRecvController::MultiplicativeRateIncrease(int64_t nowMs, int64_t lastMs, 
                                     uint32_t current_bitrate_bps) const {                
   double alpha = 1.08;                                                             
   if (lastMs > -1) {                                                              
-    auto time_since_last_update_ms = std::min(nowMs - lastMs, 1000);            
+    auto time_since_last_update_ms = std::min(nowMs - lastMs, (int64_t)1000);            
     alpha = pow(alpha, time_since_last_update_ms / 1000.0);                        
   }                                                                                
   uint32_t multiplicative_increase_bps =                                           
@@ -657,11 +656,11 @@ uint32_t MultiplicativeRateIncrease(int64_t nowMs, int64_t lastMs,
   return multiplicative_increase_bps;                                              
 }                                                                                  
                                                                                    
-uint32_t AdditiveRateIncrease(int64_t nowMs, int64_t lastMs) const {    
-  return static_cast<uint32_t>((now_ms - last_ms) * GetNearMaxIncreaseRateBps() / 1000); 
+uint32_t GccRecvController::AdditiveRateIncrease(int64_t nowMs, int64_t lastMs) const {    
+  return static_cast<uint32_t>((nowMs - lastMs) * GetNearMaxIncreaseRateBps() / 1000); 
 }                                                                                  
                                                                                    
-void UpdateMaxBitRateEstimate(float incoming_bitrate_kbps) {      
+void GccRecvController::UpdateMaxBitRateEstimate(float incoming_bitrate_kbps) {      
   const float alpha = 0.05f;                                                       
   if (avg_max_bitrate_kbps_ == -1.0f) {                                            
     avg_max_bitrate_kbps_ = incoming_bitrate_kbps;                                 
@@ -686,7 +685,7 @@ void UpdateMaxBitRateEstimate(float incoming_bitrate_kbps) {
   }                                                                                
 }                                                                                  
 
-void ChangeState (char bw_state, int64_t nowMs) {             
+void GccRecvController::ChangeState (char bw_state, int64_t nowMs) {             
   switch (bw_state) {                                     
     case 'N': //normal -> if state is hold, change to Increase mode                 
       if (rate_control_state_ == 'H') {                     
@@ -707,10 +706,9 @@ void ChangeState (char bw_state, int64_t nowMs) {
   }                                                             
 }                                                               
                                                                 
-void ChangeRegion(char region) {  
+void GccRecvController::ChangeRegion(char region) {  
   rate_control_region_ = region;                                
 }            
 
 
-
-}                                                   }
+}
