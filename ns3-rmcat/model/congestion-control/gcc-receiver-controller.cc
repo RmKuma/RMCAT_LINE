@@ -312,7 +312,6 @@ void GccRecvController::UpdateDelayBasedBitrate(uint64_t nowMs,
 		UpdateEstimator(i_arrival_, i_departure_, group_size_interval_, nowMs);
 		OveruseDetect(i_departure_, nowMs);
 		estimated_SendingBps_ = UpdateBitrate( Hypothesis_, rxRecv_rate, nowMs);
-
     }
 
 }

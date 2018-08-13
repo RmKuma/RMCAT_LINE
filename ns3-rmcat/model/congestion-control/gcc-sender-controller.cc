@@ -27,13 +27,28 @@
 #include <cassert>
 
 namespace rmcat {
+const int kDefaultMaxBitrateBps = 1000000000;
+const int64_t kLowBitrateLogPeriodMs = 10000;
+const int kMinBitrateBps = 10000;
+const int kMaxBitrateBps = 1500000;
+const int kInitialBitrateBps = 300000;
 
 GccSenderController::GccSenderController() :
+
     m_lastTimeCalcUs{0},
     m_lastTimeCalcValid{false},
     m_QdelayUs{0},
     m_ploss{0},
-    m_plr{0.f}{}
+    m_plr{0.f},
+    min_configured_bitrate_bps_(150000),
+    max_configured_bitrate_bps_(1500000),
+    
+    m_sending_rate_(max_configured_bitrate_bps_),
+    
+    min_bitrate_configured_{min_configured_bitrate_bps_},
+    max_bitrate_configured_{max_configured_bitrate_bps_},
+    last_low_bitrate_log_ms_(-1),
+    m_Bitrate_valid_(false){}
 
 GccSenderController::~GccSenderController() {}
 
@@ -56,17 +71,67 @@ float getBitrate() {
     return m_sending_rate_;
 }
 
+void GccSenderController::SetSendBitrate(int bitrate, int nowms) {
+    if (bitrate > max_bitrate_configured_){
+         bitrate = max_bitrate_configured_;
+    }
+
+    if (bitrate < min_bitrate_configured_){
+        if(last_low_bitrate_log_ms_ == -1 || now_ms - last_low_bitrate_log_ms > kLowBitrateLogPeriodMs) {
+	    last_low_bitrate_log_ms_ = now_ms;
+	}
+
+	bitrate = min_bitrate_configured_;
+    }    
+
+    m_sending_rate_ = bitrate;
+}
+
+void GccSenderController::SetMinMaxBitrate(int min_bitrate, int max_bitrate) {
+    min_bitrate_configured_ = std::max(min_bitrate, min_bitrate_configured_);
+
+    if(max_bitrate > 0) {
+	max_bitrate_configured_ = std::max<uint32_t>(min_bitrate_configured_, max_bitrate);
+    } else {
+	max_bitrate_configured_ = kDefaultMaxBitrateBps;
+    }
+}
+
 void GccSenderController::ApplyDelayBasedBitrate(float DelayBasedEstimateBitrate) {
     // TODO Called when the REMB messages are received from receiver.
     // Calculate proper m_sending_rate_ according to delay-based estimated bitrate.
+    
+    if (!m_Bitrate_valid_){
+        // First ApplyDelayBasedBitrate called. We need to initialize m_sending_rate_ and min, max configured bitrate.
+        m_Bitrate_valid_ = true;
+
+	SetMinMaxBitrate(kMinBitrateBps, kMaxBitrateBps);
+	SetSendBitrate(ns3::Simulator::now().GetMilliSeconds(), kInitialBitrateBps);
+
+	return;
+    }
+    if (DelayBasedEstimateBitrate > m_sending_rate_)        DelayBasedEstimateBitrate = m_sending_rate_;
+
+    if (DelayBasedEstimateBitrate > max_bitrate_configured_) {
+        DelayBasedEstimateBitrate = max_bitrate_configured_;
+    }
+
+    if (DelayBasedEstimateBitrate < min_bitrate_configured_) {
+        if (last_low_bitrate_log_ms_ == -1 || now_ms - last_low_bitrate_log_ms_ > kLowBitrateLogPeriodMs) {
+            last_low_bitrate_log_ms_ = now_ms;
+	}
+
+    	DelayBasedEstimateBitrate = min_bitrate_configured_;
+    }
+
+    m_sending_rate_ = DelayBasedEstimateBitrate;
 }
 
 
 void GccSenderController::UpdateLossBasedBitrate(uint64_t nowMs,
                                                  float plr) {
-
-   // TODO Loss Based Controller Implementation
-
+    // TODO Loss Based Controller Implementation
+   
 }
 
 /*

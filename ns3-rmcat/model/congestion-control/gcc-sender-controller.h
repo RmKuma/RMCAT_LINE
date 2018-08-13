@@ -64,7 +64,6 @@ public:
                                 float plr);
     
     void ApplyDelayBasedBitrate(float DelayBasedEstimateBitrate);
-
     /**
      * Simplistic implementation of bandwidth getter. It returns a hard-coded
      * bandwidth value in bits per second
@@ -74,17 +73,28 @@ public:
     float getBitrate();
 
 private:
-    float m_sending_rate_;  /* Estimated Sending Bps*/
 
     // void updateMetrics();
     void logStats(uint64_t nowUs) const;
+    void SetMinMaxBitrate(int min_bitrate, int max_bitrate);
 
     uint64_t m_lastTimeCalcUs;
     bool m_lastTimeCalcValid;
-
+    
     uint64_t m_QdelayUs; /**< estimated queuing delay in microseconds */
     uint32_t m_ploss;  /**< packet loss count within configured window */
     float m_plr;       /**< packet loss ratio within packet history window */
+
+    uint32_t min_configured_bitrate_bps_;
+    uint32_t max_configured_bitrate_bps_;
+
+    float m_sending_rate_;  /* Estimated Sending Bps*/
+    
+    uint32_t min_bitrate_configured_;
+    uint32_t max_bitrate_configured_;
+    int64_t last_low_bitrate_log_ms_;
+
+    bool m_Bitrate_valid_;
 };
 
 }
