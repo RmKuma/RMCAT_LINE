@@ -100,6 +100,7 @@ void GccSenderController::SetMinMaxBitrate(int min_bitrate, int max_bitrate) {
 void GccSenderController::ApplyDelayBasedBitrate(float DelayBasedEstimateBitrate) {
     // TODO Called when the REMB messages are received from receiver.
     // Calculate proper m_sending_rate_ according to delay-based estimated bitrate.
+    uint32_t bitrate_bps = m_sending_rate_;    // Wrapping Current Bitrate bps
     
     if (!m_Bitrate_valid_){
         // First ApplyDelayBasedBitrate called. We need to initialize m_sending_rate_ and min, max configured bitrate.
@@ -110,21 +111,24 @@ void GccSenderController::ApplyDelayBasedBitrate(float DelayBasedEstimateBitrate
 
 	return;
     }
-    if (DelayBasedEstimateBitrate > m_sending_rate_)        DelayBasedEstimateBitrate = m_sending_rate_;
-
-    if (DelayBasedEstimateBitrate > max_bitrate_configured_) {
-        DelayBasedEstimateBitrate = max_bitrate_configured_;
+    if (DelayBasedEstimateBitrate > 0 && bitrate_bps > DelayBasedEstimateBitrate) {
+        bitrate_bps = DelayBasedEstimateBitrate;
     }
 
-    if (DelayBasedEstimateBitrate < min_bitrate_configured_) {
+
+    if (bitrate_bps > max_bitrate_configured_) {
+        bitrate_bps = max_bitrate_configured_;
+    }
+
+    if (bitrate_bps < min_bitrate_configured_) {
         if (last_low_bitrate_log_ms_ == -1 || now_ms - last_low_bitrate_log_ms_ > kLowBitrateLogPeriodMs) {
             last_low_bitrate_log_ms_ = now_ms;
 	}
 
-    	DelayBasedEstimateBitrate = min_bitrate_configured_;
+    	bitrate_bps = min_bitrate_configured_;
     }
 
-    m_sending_rate_ = DelayBasedEstimateBitrate;
+    m_sending_rate_ = bitrate_bps;
 }
 
 

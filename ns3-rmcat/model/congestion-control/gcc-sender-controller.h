@@ -89,10 +89,12 @@ private:
     uint32_t max_configured_bitrate_bps_;
 
     float m_sending_rate_;  /* Estimated Sending Bps*/
-    
+    float m_loss_fraction_;
+
     uint32_t min_bitrate_configured_;
     uint32_t max_bitrate_configured_;
     int64_t last_low_bitrate_log_ms_;
+    
 
     bool m_Bitrate_valid_;
 };
