@@ -24,6 +24,7 @@
  */
 #include "gcc-sender-controller.h"
 
+namespace ns3 {
 
 namespace rmcat {
 const int kDefaultMaxBitrateBps = 1000000000;
@@ -68,12 +69,13 @@ GccSenderController::GccSenderController() :
 	last_feedback_ms_{-1},
 	first_report_time_ms_{-1},
     lost_packets_since_last_loss_update_{0},
-    expected_packets_since_last_loss_update{0},
-    has_decreased_since_last_fraction_loss{false},
+    expected_packets_since_last_loss_update_{0},
+    has_decreased_since_last_fraction_loss_{false},
     last_packet_report_ms_{-1},
     time_last_decrease_ms_{0},
     rttMs{0},   
     last_round_trip_time_ms_{0},
+    last_fraction_loss_{0},
 
     m_Bitrate_valid_{false}
     
@@ -101,11 +103,11 @@ void GccSenderController::reset() {
     m_plr = 0.f;
 }
 
-uint32_t getBitrate() {
+uint32_t GccSenderController::getBitrate() {
     return current_bitrate_bps_;
 }
 
-void GccSenderController::SetSendBitrate(int bitrate, int nowMs) {
+void GccSenderController::SetSendBitrate(int bitrate) {
 
     CapBitrate(bitrate);
 
@@ -113,10 +115,10 @@ void GccSenderController::SetSendBitrate(int bitrate, int nowMs) {
 
 void GccSenderController::SetMinMaxBitrate(int min_bitrate, int max_bitrate) {
 
-    min_bitrate_configured_ = std::max(min_bitrate, min_bitrate_configured_);
+    min_bitrate_configured_ = std::max(min_bitrate, (int)min_bitrate_configured_);
 
     if(max_bitrate > 0) {
-	    max_bitrate_configured_ = std::max<uint32_t>(min_bitrate_configured_, max_bitrate);
+	    max_bitrate_configured_ = std::max<uint32_t>((int)min_bitrate_configured_, max_bitrate);
     } else {
 	    max_bitrate_configured_ = kDefaultMaxBitrateBps;
     }
@@ -134,7 +136,7 @@ void GccSenderController::ApplyReceiverEstimatedBitrate(uint32_t Received_Estima
         m_Bitrate_valid_ = true;
 
 	    SetMinMaxBitrate(kMinBitrateBps, kMaxBitrateBps);
-	    SetSendBitrate(ns3::Simulator::now().GetMilliSeconds(), kInitialBitrateBps);
+	    SetSendBitrate(kInitialBitrateBps);
 
     }
    
@@ -143,7 +145,7 @@ void GccSenderController::ApplyReceiverEstimatedBitrate(uint32_t Received_Estima
 }
 
 
-void GccSenderController::ApplyLossBasedBitrate(auto const& report_blocks,
+void GccSenderController::ApplyLossBasedBitrate(const std::vector<GccRtcpHeader::RecvReportBlock>& report_blocks,
                                                 int64_t nowMs) {
     // TODO Loss Based Controller Implementation
     
@@ -155,15 +157,15 @@ void GccSenderController::ApplyLossBasedBitrate(auto const& report_blocks,
    
 }
 
-void GccSenderController::OnReceivedRtcpReceiverReportBlocks(auto const& report_blocks, int64_t nowMs){
+void GccSenderController::OnReceivedRtcpReceiverReportBlocks(const std::vector<GccRtcpHeader::RecvReportBlock>& report_blocks, int64_t nowMs){
     
-    if(report_blocs.empty())
+    if(report_blocks.empty())
         return;
 
     int total_packets_lost_delta = 0;
     int total_packets_delta = 0;
     
-    for (auto const& report_block : report_blocks){
+    for (const GccRtcpHeader::RecvReportBlock& report_block : report_blocks){
         auto it = last_report_blocks_.find(report_block.m_sourceSsrc);
         if (it != last_report_blocks_.end()) {
             auto number_of_packets = report_block.m_highestSeqNum -
@@ -191,16 +193,16 @@ void GccSenderController::OnReceivedRtcpReceiverReportBlocks(auto const& report_
 }
 
 void GccSenderController::UpdatePacketsLost(int packets_lost, int number_of_packets, int64_t nowMs){
-    last_feedback_ms_ = now_ms;                                              
+    last_feedback_ms_ = nowMs;                                              
     if (first_report_time_ms_ == -1)                                         
-        first_report_time_ms_ = now_ms;                                        
+        first_report_time_ms_ = nowMs;                                        
                                                                          
     // Check sequence number diff and weight loss report                     
     if (number_of_packets > 0) {                                             
         // Accumulate reports.                                                 
         lost_packets_since_last_loss_update_ += packets_lost;                  
         expected_packets_since_last_loss_update_ += number_of_packets;         
-                                                                         
+    }                                                                     
     // Don't generate a loss rate until it can be based on enough packets. 
     if (expected_packets_since_last_loss_update_ < kLimitNumPackets)       
         return;                                                              
@@ -239,7 +241,7 @@ void GccSenderController::UpdateEstimate(int64_t nowMs){
             return;                                                     
         }                                                             
     }
-    UpdateMinHistory(now_ms);                                                        
+    UpdateMinHistory(nowMs);                                                        
 	if (last_packet_report_ms_ == -1) {                                              
 		// No feedback received.                                                       
 		CapBitrate(current_bitrate_bps_);                          
@@ -278,7 +280,7 @@ void GccSenderController::UpdateEstimate(int64_t nowMs){
 				if (!has_decreased_since_last_fraction_loss_ &&                            
 						(nowMs - time_last_decrease_ms_) >=    //here                               
 						(kBweDecreaseIntervalMs + last_round_trip_time_ms_)) {             
-					time_last_decrease_ms_ = now_ms;                                         
+					time_last_decrease_ms_ = nowMs;                                         
 					// Reduce rate:                                                       
 					//   newRate = rate * (1 - 0.5*lossRate);                             
 					//   where packetLoss = 256*lossRate;                                 
@@ -377,21 +379,5 @@ void GccSenderController::updateMetrics() {
 }
 */
 
-void GccSenderController::logStats(uint64_t nowUs) const {
-
-    std::ostringstream os;
-    os << std::fixed;
-    os.precision(RMCAT_LOG_PRINT_PRECISION);
-
-    os  << " algo:dummy " << m_id
-        << " ts: "     << (nowUs / 1000)
-        << " loglen: " << m_packetHistory.size()
-        << " qdel: "   << (m_QdelayUs / 1000)
-        << " ploss: "  << m_ploss
-        << " plr: "    << m_plr
-        << " rrate: "  << m_RecvR
-        << " srate: "  << m_initBw;
-    logMessage(os.str());
 }
-
 }

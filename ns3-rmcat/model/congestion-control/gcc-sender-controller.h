@@ -34,11 +34,13 @@
 #include <map> 
 #include <utility>
 #include <deque>
+#include <algorithm>
 
 #ifndef GCC_SENDER_CONTROLLER_H
 #define GCC_SENDER_CONTROLLER_H
 
-                                                                              
+
+namespace ns3{                                                                           
 
 namespace rmcat {
 
@@ -72,11 +74,11 @@ public:
      * Simplistic implementation of feedback packet processing. It simply
      * prints calculated metrics at regular intervals
      */
-    void ApplyLossBasedBitrate(auto const& report_blocks, int64_t nowMs);
+    void ApplyLossBasedBitrate(const std::vector<GccRtcpHeader::RecvReportBlock>& report_blocks, int64_t nowMs);
     
-    void ApplyDelayBasedBitrate(uint32_t Received_Estimated_Bitrate);
+    void ApplyReceiverEstimatedBitrate(uint32_t Received_Estimated_Bitrate);
 
-    void OnReceivedRtcpReceiverReportBlocks(auto const& report_blocks, int64_t nowMs);
+    void OnReceivedRtcpReceiverReportBlocks(const std::vector<GccRtcpHeader::RecvReportBlock>& report_blocks, int64_t nowMs);
  
     void UpdatePacketsLost(int packet_lost, int number_of_packets, int64_t nowMs);
 
@@ -97,9 +99,7 @@ public:
 
 private:
 
-    // void updateMetrics();
-    void logStats(uint64_t nowUs) const;
-    void SetSendBitrate(int bitrate, int nowMs);
+    void SetSendBitrate(int bitrate);
     void SetMinMaxBitrate(int min_bitrate, int max_bitrate);
 
     uint64_t m_lastTimeCalcUs;
@@ -118,17 +118,18 @@ private:
     uint32_t min_bitrate_configured_;
     uint32_t max_bitrate_configured_;
     
-    std::map<uint32_t, RTCPReportBlock> last_report_blocks_;
+    std::map<uint32_t, GccRtcpHeader::RecvReportBlock> last_report_blocks_;
     
     int64_t last_feedback_ms_; 
     int64_t first_report_time_ms_;
     int lost_packets_since_last_loss_update_;
-    int expected_packets_since_last_loss_update;
-    bool has_decreased_since_last_fraction_loss;
+    int expected_packets_since_last_loss_update_;
+    bool has_decreased_since_last_fraction_loss_;
     int64_t last_packet_report_ms_;
     int64_t time_last_decrease_ms_;  
     int64_t rttMs;   
-    int64_t last_round_trip_time_ms_; 
+    int64_t last_round_trip_time_ms_;
+    uint8_t last_fraction_loss_; 
 
     std::deque<std::pair<int64_t, uint32_t> > min_bitrate_history_;
 
@@ -136,5 +137,5 @@ private:
 };
 
 }
-
+}
 #endif /* GCC_SENDER_CONTROLLER_H */
