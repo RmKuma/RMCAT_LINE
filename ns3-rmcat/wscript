@@ -34,6 +34,7 @@ def build(bld):
         'model/topo/wired-topo.cc',
         'model/topo/wifi-topo.cc',
         'model/congestion-control/gcc-receiver-controller.cc',
+        'model/congestion-control/gcc-sender-controller.cc',
         ]
 
     module.defines = ['NS3_ASSERT_ENABLE', 'NS3_LOG_ENABLE']
@@ -68,6 +69,7 @@ def build(bld):
         'model/topo/wired-topo.h',
         'model/topo/wifi-topo.h',
         'model/congestion-control/gcc-receiver-controller.h',
+        'model/congestion-control/gcc-sender-controller.h',
        ]
 
     if bld.env.ENABLE_EXAMPLES:
