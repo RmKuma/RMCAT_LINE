@@ -23,7 +23,7 @@ namespace ns3 {
 NS_OBJECT_ENSURE_REGISTERED (GccRtcpHeader);
 NS_OBJECT_ENSURE_REGISTERED (RembHeader);
 
-NS_LOG_COMPONENT_DEFINE ("GfcHeader");
+NS_LOG_COMPONENT_DEFINE ("GfpHeader");
 
 void GfpHdrSetBit (uint8_t& val, uint8_t pos, bool bit)
 {
@@ -130,7 +130,7 @@ uint32_t GccRtcpHeader::DeserializeCommon (Buffer::Iterator& start)
 
 void GccRtcpHeader::Serialize (Buffer::Iterator start) const
 {
-    NS_ASSERT (m_length > 1);
+    NS_ASSERT (m_length >= 1);
     SerializeCommon (start);
 
     if(m_packetType == RTCP_SR)

@@ -58,6 +58,7 @@ def build(bld):
         'model/apps/rmcat-receiver.h',
         'model/apps/gcc-node.h',
         'model/apps/rtp-header.h',
+        'model/apps/gfp-header.h',
         'model/syncodecs/syncodecs.h',
         'model/syncodecs/traces-reader.h',
         'model/congestion-control/sender-based-controller.h',

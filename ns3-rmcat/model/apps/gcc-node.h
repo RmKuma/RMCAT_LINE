@@ -52,7 +52,7 @@ public:
     void SetCodecType (SyncodecType codecType);
 
     void SetDest (Ipv4Address dest_ip, uint16_t dest_port);
-    void SetUp  (uint16_t local_port, uint64_t stream_size);
+    void SetUp (uint16_t local_port, uint64_t stream_size);
     bool AddMulStream(uint32_t num, uint64_t* stream_size);
 
 private:
