@@ -26,7 +26,7 @@
  */
 
 
-#include <ns/gfp-header.h>
+#include <ns3/gfp-header.h>
 #include <iostream>   
 #include <vector>       
 #include <sstream>    
