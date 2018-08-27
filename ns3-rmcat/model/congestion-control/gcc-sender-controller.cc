@@ -23,8 +23,7 @@
  * @version 0.1.0
  */
 #include "gcc-sender-controller.h"
-#include <sstream>
-#include <cassert>
+
 
 namespace rmcat {
 const int kDefaultMaxBitrateBps = 1000000000;
@@ -33,6 +32,22 @@ const int kMinBitrateBps = 10000;
 const int kMaxBitrateBps = 1500000;
 const int kInitialBitrateBps = 300000;
 
+const int64_t kBweIncreaseIntervalMs = 1000;                                    
+const int64_t kBweDecreaseIntervalMs = 300;                                     
+const int64_t kStartPhaseMs = 2000;                                             
+const int64_t kBweConverganceTimeMs = 20000;                                    
+const int kLimitNumPackets = 20;                                                
+const int64_t kRtcEventLogPeriodMs = 5000;                                      
+const int64_t kFeedbackIntervalMs = 5000;                                       
+const int64_t kFeedbackTimeoutIntervals = 3;                                    
+const int64_t kTimeoutIntervalMs = 1000;                                        
+                                                                                
+const float kDefaultLowLossThreshold = 0.02f;                                   
+const float kDefaultHighLossThreshold = 0.1f;                                   
+const int kDefaultBitrateThresholdKbps = 0;                                     
+
+
+
 GccSenderController::GccSenderController() :
 
     m_lastTimeCalcUs{0},
@@ -40,15 +55,34 @@ GccSenderController::GccSenderController() :
     m_QdelayUs{0},
     m_ploss{0},
     m_plr{0.f},
-    min_configured_bitrate_bps_(150000),
-    max_configured_bitrate_bps_(1500000),
     
-    m_sending_rate_(max_configured_bitrate_bps_),
+    min_configured_bitrate_bps_{150000},
+    max_configured_bitrate_bps_{1500000},
+    
+    current_bitrate_bps_{0},  //uint32_t m_sending_rate -> current_bitrate_bps_
+    remb_bitrate_{0},                                   //uint32_t
     
     min_bitrate_configured_{min_configured_bitrate_bps_},
     max_bitrate_configured_{max_configured_bitrate_bps_},
-    last_low_bitrate_log_ms_(-1),
-    m_Bitrate_valid_(false){}
+
+	last_feedback_ms_{-1},
+	first_report_time_ms_{-1},
+    lost_packets_since_last_loss_update_{0},
+    expected_packets_since_last_loss_update{0},
+    has_decreased_since_last_fraction_loss{false},
+    last_packet_report_ms_{-1},
+    time_last_decrease_ms_{0},
+    rttMs{0},   
+    last_round_trip_time_ms_{0},
+
+    m_Bitrate_valid_{false}
+    
+    {
+
+    }
+
+  
+
 
 GccSenderController::~GccSenderController() {}
 
@@ -67,76 +101,254 @@ void GccSenderController::reset() {
     m_plr = 0.f;
 }
 
-float getBitrate() {
-    return m_sending_rate_;
+uint32_t getBitrate() {
+    return current_bitrate_bps_;
 }
 
-void GccSenderController::SetSendBitrate(int bitrate, int nowms) {
-    if (bitrate > max_bitrate_configured_){
-         bitrate = max_bitrate_configured_;
-    }
+void GccSenderController::SetSendBitrate(int bitrate, int nowMs) {
 
-    if (bitrate < min_bitrate_configured_){
-        if(last_low_bitrate_log_ms_ == -1 || now_ms - last_low_bitrate_log_ms > kLowBitrateLogPeriodMs) {
-	    last_low_bitrate_log_ms_ = now_ms;
-	}
+    CapBitrate(bitrate);
 
-	bitrate = min_bitrate_configured_;
-    }    
-
-    m_sending_rate_ = bitrate;
 }
 
 void GccSenderController::SetMinMaxBitrate(int min_bitrate, int max_bitrate) {
+
     min_bitrate_configured_ = std::max(min_bitrate, min_bitrate_configured_);
 
     if(max_bitrate > 0) {
-	max_bitrate_configured_ = std::max<uint32_t>(min_bitrate_configured_, max_bitrate);
+	    max_bitrate_configured_ = std::max<uint32_t>(min_bitrate_configured_, max_bitrate);
     } else {
-	max_bitrate_configured_ = kDefaultMaxBitrateBps;
+	    max_bitrate_configured_ = kDefaultMaxBitrateBps;
     }
+
 }
 
-void GccSenderController::ApplyDelayBasedBitrate(float DelayBasedEstimateBitrate) {
+void GccSenderController::ApplyReceiverEstimatedBitrate(uint32_t Received_Estimated_Bitrate) {
     // TODO Called when the REMB messages are received from receiver.
     // Calculate proper m_sending_rate_ according to delay-based estimated bitrate.
-    uint32_t bitrate_bps = m_sending_rate_;    // Wrapping Current Bitrate bps
     
     if (!m_Bitrate_valid_){
-        // First ApplyDelayBasedBitrate called. We need to initialize m_sending_rate_ and min, max configured bitrate.
+        // First ApplyDelayBasedBitrate called.
+        // We need to initialize m_sending_rate_ and min, max configured bitrate.
+
         m_Bitrate_valid_ = true;
 
-	SetMinMaxBitrate(kMinBitrateBps, kMaxBitrateBps);
-	SetSendBitrate(ns3::Simulator::now().GetMilliSeconds(), kInitialBitrateBps);
+	    SetMinMaxBitrate(kMinBitrateBps, kMaxBitrateBps);
+	    SetSendBitrate(ns3::Simulator::now().GetMilliSeconds(), kInitialBitrateBps);
 
-	return;
     }
-    if (DelayBasedEstimateBitrate > 0 && bitrate_bps > DelayBasedEstimateBitrate) {
-        bitrate_bps = DelayBasedEstimateBitrate;
+   
+    remb_bitrate_ = Received_Estimated_Bitrate;
+    CapBitrate(current_bitrate_bps_);
+}
+
+
+void GccSenderController::ApplyLossBasedBitrate(auto const& report_blocks,
+                                                int64_t nowMs) {
+    // TODO Loss Based Controller Implementation
+    
+    OnReceivedRtcpReceiverReportBlocks(report_blocks, nowMs);
+	
+    if (rttMs > 0 )
+        last_round_trip_time_ms_ = rttMs;
+
+   
+}
+
+void GccSenderController::OnReceivedRtcpReceiverReportBlocks(auto const& report_blocks, int64_t nowMs){
+    
+    if(report_blocs.empty())
+        return;
+
+    int total_packets_lost_delta = 0;
+    int total_packets_delta = 0;
+    
+    for (auto const& report_block : report_blocks){
+        auto it = last_report_blocks_.find(report_block.m_sourceSsrc);
+        if (it != last_report_blocks_.end()) {
+            auto number_of_packets = report_block.m_highestSeqNum -
+                         it->second.m_highestSeqNum;   
+            total_packets_delta += number_of_packets;                               
+            auto lost_delta = report_block.m_cumNumLost - it->second.m_cumNumLost;  
+            total_packets_lost_delta += lost_delta;                 
+        }
+        rttMs = nowMs - report_block.m_lastSRTime - report_block.m_SRDelay;
+        last_report_blocks_[report_block.m_sourceSsrc] = report_block;                
     }
 
+    if (!total_packets_delta)                                                      
+        return;                                                                      
+    int packets_received_delta = total_packets_delta - total_packets_lost_delta;   
+    // To detect lost packets, at least one packet has to be received. This check  
+    // is needed to avoid bandwith detection update in                             
+    // VideoSendStreamTest.SuspendBelowMinBitrate                                  
+                                                                               
+    if (packets_received_delta < 1)                                                
+        return;                                                                      
+    
+    UpdatePacketsLost(total_packets_lost_delta, total_packets_lost_delta + packets_received_delta, nowMs);      
 
-    if (bitrate_bps > max_bitrate_configured_) {
+}
+
+void GccSenderController::UpdatePacketsLost(int packets_lost, int number_of_packets, int64_t nowMs){
+    last_feedback_ms_ = now_ms;                                              
+    if (first_report_time_ms_ == -1)                                         
+        first_report_time_ms_ = now_ms;                                        
+                                                                         
+    // Check sequence number diff and weight loss report                     
+    if (number_of_packets > 0) {                                             
+        // Accumulate reports.                                                 
+        lost_packets_since_last_loss_update_ += packets_lost;                  
+        expected_packets_since_last_loss_update_ += number_of_packets;         
+                                                                         
+    // Don't generate a loss rate until it can be based on enough packets. 
+    if (expected_packets_since_last_loss_update_ < kLimitNumPackets)       
+        return;                                                              
+                                                                         
+    has_decreased_since_last_fraction_loss_ = false;                       
+    int64_t lost_q8 = lost_packets_since_last_loss_update_ << 8;           
+    int64_t expected = expected_packets_since_last_loss_update_;           
+    last_fraction_loss_ = std::min<int>(lost_q8 / expected, 255);          
+                                                                         
+    // Reset accumulators.                                                 
+                                                                         
+    lost_packets_since_last_loss_update_ = 0;                              
+    expected_packets_since_last_loss_update_ = 0;                          
+    last_packet_report_ms_ = nowMs;                                       
+    UpdateEstimate(nowMs);                                                       
+
+}
+
+bool GccSenderController::IsInStartPhase(int64_t nowMs) {
+    return first_report_time_ms_ == -1 ||
+        nowMs - first_report_time_ms_ < kStartPhaseMs;
+}
+
+void GccSenderController::UpdateEstimate(int64_t nowMs){
+    uint32_t new_bitrate = current_bitrate_bps_;
+
+
+    if(last_fraction_loss_ == 0 && IsInStartPhase(nowMs)) {
+
+        new_bitrate = std::max(remb_bitrate_, new_bitrate);           
+                                                              
+        if (new_bitrate != current_bitrate_bps_) {                    
+            min_bitrate_history_.clear();                               
+            min_bitrate_history_.push_back(std::make_pair(nowMs, current_bitrate_bps_));          
+            CapBitrate(new_bitrate);                
+            return;                                                     
+        }                                                             
+    }
+    UpdateMinHistory(now_ms);                                                        
+	if (last_packet_report_ms_ == -1) {                                              
+		// No feedback received.                                                       
+		CapBitrate(current_bitrate_bps_);                          
+		return;                                                                        
+	}                                                                                
+	int64_t time_since_packet_report_ms = nowMs - last_packet_report_ms_;           
+	int64_t time_since_feedback_ms = nowMs - last_feedback_ms_;                     
+	if (time_since_packet_report_ms < 1.2 * kFeedbackIntervalMs) {                   
+		
+        float loss = last_fraction_loss_ / 256.0f;                                     
+		
+        if (current_bitrate_bps_ < kDefaultBitrateThresholdKbps ||                           
+				loss <= kDefaultLowLossThreshold) {                                             
+			// Loss < 2%: Increase rate by 8% of the min bitrate in the last             
+			// kBweIncreaseIntervalMs.                                                   
+			// Note that by remembering the bitrate over the last second one can         
+			// rampup up one second faster than if only allowed to start ramping         
+			// at 8% per second rate now. E.g.:                                          
+			//   If sending a constant 100kbps it can rampup immediatly to 108kbps       
+			//   whenever a receiver report is received with lower packet loss.          
+			//   If instead one would do: current_bitrate_bps_ *= 1.08^(delta time),     
+			//   it would take over one second since the lower packet loss to achieve    
+			//   108kbps.                     
+                                           
+			new_bitrate = static_cast<uint32_t>(                                         
+					min_bitrate_history_.front().second * 1.08 + 0.5);                       
+
+			new_bitrate += 1000;                                                         
+		
+        } else if (current_bitrate_bps_ > kDefaultBitrateThresholdKbps) {                    
+			if (loss <= kDefaultHighLossThreshold) {                                          
+				// Loss between 2% - 10%: Do nothing.                                      
+			} else {                                                                     
+				// Loss > 10%: Limit the rate decreases to once a kBweDecreaseIntervalMs   
+				// + rtt.                                                                  
+				if (!has_decreased_since_last_fraction_loss_ &&                            
+						(nowMs - time_last_decrease_ms_) >=    //here                               
+						(kBweDecreaseIntervalMs + last_round_trip_time_ms_)) {             
+					time_last_decrease_ms_ = now_ms;                                         
+					// Reduce rate:                                                       
+					//   newRate = rate * (1 - 0.5*lossRate);                             
+					//   where packetLoss = 256*lossRate;                                 
+					new_bitrate = static_cast<uint32_t>(                                  
+							(current_bitrate_bps_ *                                           
+							 static_cast<double>(512 - last_fraction_loss_)) /                
+							512.0);                                                           
+					has_decreased_since_last_fraction_loss_ = true;                       
+				}                                                                       
+			}                                                                         
+		}                                                                           
+	} 
+    /*else if (time_since_feedback_ms >                                           
+			kFeedbackTimeoutIntervals * kFeedbackIntervalMs &&             
+			(last_timeout_ms_ == -1 ||                                         
+			 now_ms - last_timeout_ms_ > kTimeoutIntervalMs)) {                
+		if (in_timeout_experiment_) {                                               
+			new_bitrate *= 0.8;                                                       
+			// Reset accumulators since we've already acted on missing feedback and   
+			// shouldn't to act again on these old lost packets.                      
+			lost_packets_since_last_loss_update_ = 0;                                 
+			expected_packets_since_last_loss_update_ = 0;                             
+			last_timeout_ms_ = now_ms;                                                
+		}                                                                           
+	} */                                                                            
+
+	CapBitrate(new_bitrate);                                      
+}
+
+void GccSenderController::UpdateMinHistory(int64_t nowMs) {           
+  // Remove old data points from history.                                      
+  // Since history precision is in ms, add one so it is able to increase       
+  // bitrate if it is off by as little as 0.5ms.                               
+    while (!min_bitrate_history_.empty() &&                                      
+           nowMs - min_bitrate_history_.front().first + 1 >                     
+           kBweIncreaseIntervalMs) {                                         
+        min_bitrate_history_.pop_front();                                          
+    }                                                                            
+                                                                               
+  // Typical minimum sliding-window algorithm: Pop values higher than current  
+  // bitrate before pushing it.                                                
+    while (!min_bitrate_history_.empty() &&                                      
+           current_bitrate_bps_ <= min_bitrate_history_.back().second) {         
+        min_bitrate_history_.pop_back();                                           
+    }                                                                            
+                                                                               
+    min_bitrate_history_.push_back(std::make_pair(nowMs, current_bitrate_bps_));
+}                                                                              
+
+
+void GccSenderController::CapBitrate(uint32_t bitrate_bps){
+    if(remb_bitrate_ > 0 && bitrate_bps > remb_bitrate_){
+		bitrate_bps = remb_bitrate_;
+    }
+    
+    if(bitrate_bps > max_bitrate_configured_){
         bitrate_bps = max_bitrate_configured_;
     }
 
-    if (bitrate_bps < min_bitrate_configured_) {
-        if (last_low_bitrate_log_ms_ == -1 || now_ms - last_low_bitrate_log_ms_ > kLowBitrateLogPeriodMs) {
-            last_low_bitrate_log_ms_ = now_ms;
-	}
-
-    	bitrate_bps = min_bitrate_configured_;
+    if(bitrate_bps < min_bitrate_configured_){
+        bitrate_bps = min_bitrate_configured_;
     }
-
-    m_sending_rate_ = bitrate_bps;
+    
+    current_bitrate_bps_ = bitrate_bps;
 }
 
 
-void GccSenderController::UpdateLossBasedBitrate(uint64_t nowMs,
-                                                 float plr) {
-    // TODO Loss Based Controller Implementation
-   
-}
+
+
+
 
 /*
 float GccSenderController::getBandwidth(uint64_t nowUs) const {
