@@ -40,8 +40,6 @@
 #define GCC_SENDER_CONTROLLER_H
 
 
-namespace ns3{                                                                           
-
 namespace rmcat {
 
 /**
@@ -74,11 +72,11 @@ public:
      * Simplistic implementation of feedback packet processing. It simply
      * prints calculated metrics at regular intervals
      */
-    void ApplyLossBasedBitrate(const std::vector<GccRtcpHeader::RecvReportBlock>& report_blocks, int64_t nowMs);
+    void ApplyLossBasedBitrate(const std::vector<ns3::GccRtcpHeader::RecvReportBlock>& report_blocks, int64_t nowMs);
     
     void ApplyReceiverEstimatedBitrate(uint32_t Received_Estimated_Bitrate);
 
-    void OnReceivedRtcpReceiverReportBlocks(const std::vector<GccRtcpHeader::RecvReportBlock>& report_blocks, int64_t nowMs);
+    void OnReceivedRtcpReceiverReportBlocks(const std::vector<ns3::GccRtcpHeader::RecvReportBlock>& report_blocks, int64_t nowMs);
  
     void UpdatePacketsLost(int packet_lost, int number_of_packets, int64_t nowMs);
 
@@ -118,7 +116,7 @@ private:
     uint32_t min_bitrate_configured_;
     uint32_t max_bitrate_configured_;
     
-    std::map<uint32_t, GccRtcpHeader::RecvReportBlock> last_report_blocks_;
+    std::map<uint32_t, ns3::GccRtcpHeader::RecvReportBlock> last_report_blocks_;
     
     int64_t last_feedback_ms_; 
     int64_t first_report_time_ms_;
@@ -136,6 +134,5 @@ private:
     bool m_Bitrate_valid_;
 };
 
-}
 }
 #endif /* GCC_SENDER_CONTROLLER_H */

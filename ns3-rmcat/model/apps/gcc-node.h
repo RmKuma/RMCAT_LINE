@@ -36,7 +36,7 @@
 #include "ns3/application.h"
 #include <memory>
 #include "ns3/gcc-receiver-controller.h"
-//#include "ns3/gcc-sender-controller.h"
+#include "ns3/gcc-sender-controller.h"
 #include <map>
 
 namespace ns3 {
@@ -61,7 +61,7 @@ private:
 
     /*Send Methods*/
     void EnqueuePacket ();
-    void SendPacket (uint64_t usSlept);
+    void SendPacket (uint64_t msSlept);
     void SendOverSleep (uint32_t bytesToSend, uint32_t send_ssrc);
     void SendRtcp(GccRtcpHeader header, bool reschedule);
     void SendSr();
@@ -82,7 +82,7 @@ private:
 private:
     std::shared_ptr<syncodecs::Codec> m_codec;
     std::shared_ptr<rmcat::GccRecvController> m_recvController;
-//    std::shared_ptr<rmcat::GccSendController> m_sendController;
+    std::shared_ptr<rmcat::GccSenderController> m_senderController;
     
 
     Ipv4Address m_destIp;
@@ -116,7 +116,6 @@ private:
     std::map<uint32_t, uint64_t> m_maxSize; //0 means infinite size
     bool m_complete;
 
-
     std::set<uint32_t> m_byeSet;
 
     bool m_sending;
@@ -128,7 +127,9 @@ private:
     std::map<uint32_t, uint32_t> m_lost;
     std::map<uint32_t, uint32_t> m_cumLost;
     std::map<uint32_t, uint32_t> m_recvPackets;
+    std::map<uint32_t, uint32_t> m_lastSrRecvTime;
     bool m_receiving;
+
 
 };
 

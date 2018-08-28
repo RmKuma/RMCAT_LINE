@@ -26,7 +26,6 @@
 #include <cassert>
 #define BURST_TIME 5
 
-
 namespace rmcat {
 
 GccRecvController::GccRecvController() :
@@ -708,6 +707,5 @@ void GccRecvController::ChangeState (char bw_state, int64_t nowMs) {
 void GccRecvController::ChangeRegion(char region) {  
   rate_control_region_ = region;                                
 }            
-
 
 }

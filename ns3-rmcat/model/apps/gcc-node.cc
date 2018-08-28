@@ -36,9 +36,9 @@
 
 NS_LOG_COMPONENT_DEFINE ("GccNode");
 #define INITRATE 500000 //1Mbps
-#define VIDEOINTERVAL 1000000 //1s == 1000000us
-#define AUDIOINTERVAL 5000000 //5s == 5000000us
-#define REMBINTERVAL 1000000 //1s == 1000000us
+#define VIDEOINTERVAL 1000 //1s == 1000ms
+#define AUDIOINTERVAL 5000 //5s == 5000ms
+#define REMBINTERVAL 1000 //1s == 1000ms
 
 namespace ns3 {
 
@@ -162,7 +162,7 @@ void GccNode::SetUp (uint16_t local_port, uint64_t stream_size)
     }
 
     m_recvController = std::make_shared<rmcat::GccRecvController> ();
-//    m_sendController = std::make_shared<rmcat::GccSendController> ();
+    m_senderController = std::make_shared<rmcat::GccSenderController> ();
 
     m_localPort = local_port;
     m_socket = Socket::CreateSocket (GetNode (), UdpSocketFactory::GetTypeId ());
@@ -221,8 +221,8 @@ void GccNode::StartApplication ()
     m_nextSendSsrcIndex = 0;
 
     m_enqueueEvent = Simulator::Schedule (Seconds (0.0), &GccNode::EnqueuePacket, this);
-    m_rtcpEvent = Simulator::Schedule(ns3::MicroSeconds(GetNextRtcpTime()), &GccNode::SendSr, this);
-    m_rembEvent = Simulator::Schedule (ns3::MicroSeconds(REMBINTERVAL), &GccNode::SendRemb, this); //REMB is sent per 1s (webRTC)
+    m_rtcpEvent = Simulator::Schedule(ns3::MilliSeconds(GetNextRtcpTime()), &GccNode::SendSr, this);
+    m_rembEvent = Simulator::Schedule (ns3::MilliSeconds(REMBINTERVAL), &GccNode::SendRemb, this); //REMB is sent per 1s (webRTC)
     
 }
 
@@ -312,7 +312,7 @@ void GccNode::EnqueuePacket ()
     }
 }
 
-void GccNode::SendPacket (uint64_t usSlept)
+void GccNode::SendPacket (uint64_t msSlept)
 {
     uint32_t send_ssrc = 0;
     bool can_send = false;
@@ -367,17 +367,17 @@ void GccNode::SendPacket (uint64_t usSlept)
                  << ", buffer bytes: " << m_rateShapingBytes[send_ssrc]);
 
     // Synthetic oversleep: random uniform [0% .. 1%]
-    uint64_t oversleepUs = usSlept * (rand () % 100) / 10000;
-    Time tOver{MicroSeconds (oversleepUs)};
+    uint64_t oversleepMs = msSlept * (rand () % 100) / 10000;
+    Time tOver{MilliSeconds (oversleepMs)};
     m_sendOversleepEvent = Simulator::Schedule (tOver, &GccNode::SendOverSleep,
                                                 this, bytesToSend,send_ssrc);
 
     // schedule next sendData
-    const double usToNextSentPacketD = double (bytesToSend) * 8. * 1000. * 1000. / m_rSend;
-    const uint64_t usToNextSentPacket = uint64_t (usToNextSentPacketD);
+    const double msToNextSentPacketD = double (bytesToSend) * 8. * 1000. / m_rSend;
+    const uint64_t msToNextSentPacket = uint64_t (msToNextSentPacketD);
 
-    Time tNext{MicroSeconds (usToNextSentPacket)};
-    m_sendEvent = Simulator::Schedule (tNext, &GccNode::SendPacket, this, usToNextSentPacket);
+    Time tNext{MilliSeconds (msToNextSentPacket)};
+    m_sendEvent = Simulator::Schedule (tNext, &GccNode::SendPacket, this, msToNextSentPacket);
 }
 
 void GccNode::SendOverSleep (uint32_t bytesToSend, uint32_t send_ssrc) 
@@ -385,15 +385,15 @@ void GccNode::SendOverSleep (uint32_t bytesToSend, uint32_t send_ssrc)
     if(!m_sending)
       m_sending = true;
     
-    const auto nowUs = Simulator::Now ().GetMicroSeconds ();
+    const auto nowMs = Simulator::Now ().GetMilliSeconds ();
     //m_sendController->... required
 
     ns3::RtpHeader header{96}; // 96: dynamic payload type, according to RFC 3551
     header.SetSequence (m_sequence[send_ssrc]++);
-    NS_ASSERT (nowUs >= 0);
+    NS_ASSERT (nowMs >= 0);
     // Most video payload types in RFC 3551, Table 5, use a 90 KHz clock
     // Therefore, assuming 90 KHz clock for RTP timestamps
-    header.SetTimestamp (m_rtpTsOffset[send_ssrc] + uint32_t (nowUs * 90 / 1000));;
+    header.SetTimestamp (m_rtpTsOffset[send_ssrc] + uint32_t (nowMs * 90 / 1000));;
     header.SetSsrc (send_ssrc);
 
     auto packet = Create<Packet> (bytesToSend);
@@ -424,10 +424,14 @@ void GccNode::SendSr()
     {
       double fractionRatio = m_lost[ssrc]/(double)m_recvPackets[ssrc];
       uint8_t frac = uint8_t(255.0 * fractionRatio);
-      
       uint32_t ret = 0;
+      uint32_t nowMs = Simulator::Now().GetMilliSeconds();
       NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::Add RrBlock, Size "<<rrSize);
-      ret = header->AddRRFeedback(ssrc, frac, m_cumLost[ssrc], m_recvSeq[ssrc], 0, 0, 0);
+
+      if(m_lastSrRecvTime.find(ssrc) == m_lastSrRecvTime.end())
+        m_lastSrRecvTime[ssrc] = 0;
+      ret = header->AddRRFeedback(ssrc, frac, m_cumLost[ssrc], m_recvSeq[ssrc], 0, m_lastSrRecvTime[ssrc], nowMs-m_lastSrRecvTime[ssrc]);
+
       if(ret == GccRtcpHeader::RTCP_TOO_LONG)
       {
         header->SetTypeOrCount(31); //maximum number of RR blocks by RFC & WebRTC
@@ -436,6 +440,7 @@ void GccNode::SendSr()
         
         delete header;
         header = new GccRtcpHeader(GccRtcpHeader::RTCP_RR);
+        ret = header->AddRRFeedback(ssrc, frac, m_cumLost[ssrc], m_recvSeq[ssrc], 0, m_lastSrRecvTime[ssrc], nowMs-m_lastSrRecvTime[ssrc]);
       }
       NS_ASSERT(ret == GccRtcpHeader::RTCP_NONE);
       m_lost[ssrc] = 0;
@@ -506,12 +511,16 @@ void GccNode::SendRr()
     
     for(const auto& ssrc : m_recvSsrcSet)
     {
-      NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::Add RrBlock, Size : "<<rrSize);
       double fractionRatio = m_lost[ssrc]/(double)m_recvPackets[ssrc];
       uint8_t frac = uint8_t(255.0 * fractionRatio);
       uint32_t ret = 0;
-
-      ret = header->AddRRFeedback(ssrc, frac, m_cumLost[ssrc], m_recvSeq[ssrc], 0, 0, 0);
+      uint32_t nowMs = Simulator::Now().GetMilliSeconds();
+      NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::Add RrBlock, Size "<<rrSize);
+   
+      if(m_lastSrRecvTime.find(ssrc) == m_lastSrRecvTime.end())
+        m_lastSrRecvTime[ssrc] = 0;
+      ret = header->AddRRFeedback(ssrc, frac, m_cumLost[ssrc], m_recvSeq[ssrc], 0, m_lastSrRecvTime[ssrc], nowMs-m_lastSrRecvTime[ssrc]);
+      
       if(ret == GccRtcpHeader::RTCP_TOO_LONG)
       {
         header->SetTypeOrCount(31); //maximum number of RR blocks by RFC & WebRTC
@@ -520,8 +529,8 @@ void GccNode::SendRr()
         
         delete header;
         header = new GccRtcpHeader(GccRtcpHeader::RTCP_RR);
+        ret = header->AddRRFeedback(ssrc, frac, m_cumLost[ssrc], m_recvSeq[ssrc], 0, m_lastSrRecvTime[ssrc], nowMs-m_lastSrRecvTime[ssrc]);
       }
-      
       NS_ASSERT(ret == GccRtcpHeader::RTCP_NONE);
       m_lost[ssrc] = 0;
       m_recvPackets[ssrc] = 0;
@@ -592,7 +601,7 @@ void GccNode::SendRtcp(GccRtcpHeader header, bool reschedule)
    
     if(reschedule)
     { 
-      m_rtcpEvent = Simulator::Schedule(ns3::MicroSeconds(GetNextRtcpTime()), &GccNode::SendSr, this);
+      m_rtcpEvent = Simulator::Schedule(ns3::MilliSeconds(GetNextRtcpTime()), &GccNode::SendSr, this);
     }
 }
 
@@ -616,26 +625,26 @@ void GccNode::SendRemb()
   NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::SendRemb, " << packet->ToString ());
   m_socket->SendTo (packet, 0, InetSocketAddress{m_destIp, m_destPort});
 
-  m_rembEvent = Simulator::Schedule (ns3::MicroSeconds(REMBINTERVAL), &GccNode::SendRemb, this); //REMB is sent per 1s (webRTC)
+  m_rembEvent = Simulator::Schedule (ns3::MilliSeconds(REMBINTERVAL), &GccNode::SendRemb, this); //REMB is sent per 1s (webRTC)
 }
 
 uint32_t GccNode::GetNextRtcpTime()
 {
-    uint32_t minIntervalUs = 0;  
+    uint32_t minIntervalMs = 0;  
     // Calculate bandwidth for video; 360s / send bandwidth in kbit/s. (WebRTC)
     uint32_t send_bitrate_kbit = m_rSend / 1000;
          
     if (send_bitrate_kbit != 0)
-      minIntervalUs = 360*1000*1000 / send_bitrate_kbit;
+      minIntervalMs = 360*1000 / send_bitrate_kbit;
 
-    if (minIntervalUs > VIDEOINTERVAL)  //assume that we send video... if audio, use AUDIOINTERVAL
+    if (minIntervalMs > VIDEOINTERVAL)  //assume that we send video... if audio, use AUDIOINTERVAL
     {     
-      minIntervalUs = VIDEOINTERVAL;
+      minIntervalMs = VIDEOINTERVAL;
     }
       
     // The interval between RTCP packets is varied randomly over the
     // range [1/2,3/2] times the calculated interval.
-    uint32_t rtcpNext = rand()%(minIntervalUs+1) + minIntervalUs/2;
+    uint32_t rtcpNext = rand()%(minIntervalMs+1) + minIntervalMs/2;
 
     NS_LOG_INFO("Next RTCP Send Interval : "<<rtcpNext);
 
@@ -717,7 +726,7 @@ void GccNode::RecvDataPacket(Ptr<Packet> p, Address remoteAddr)
 
     m_receiving = true;
 
-    //AddFeedback (header.GetSequence (), recvTimestampUs);
+    //AddFeedback (header.GetSequence (), recvTimestampMs);
 }
 
 void GccNode::RecvSrPacket(Ptr<Packet> p, Address remoteAddr)
@@ -744,7 +753,12 @@ void GccNode::RecvSrPacket(Ptr<Packet> p, Address remoteAddr)
       for(const auto& rrb : rrbs)
       {
         NS_ASSERT(m_localSsrc == rrb.m_sourceSsrc || (m_srcSsrcSet.find(rrb.m_sourceSsrc) != m_srcSsrcSet.end()));
-        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRrBlocks, ssrc : "<<rrb.m_sourceSsrc<<", frac : "<<rrb.m_fractionLost<<", cumLost : "<<rrb.m_cumNumLost<<", seq : "<<rrb.m_highestSeqNum);
+     
+        uint32_t rtt =  Simulator::Now().GetMilliSeconds()-rrb.m_lastSRTime-rrb.m_SRDelay;
+     
+        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRrBlocks, ssrc : "<<rrb.m_sourceSsrc<<", frac : "<<rrb.m_fractionLost<<", cumLost : "<<rrb.m_cumNumLost<<", seq : "<<rrb.m_highestSeqNum<<", last SR Recv Time : "<<rrb.m_lastSRTime<<", SR Delay : "<<rrb.m_SRDelay<<", rtt : "<<rtt);
+        
+        m_lastSrRecvTime[rrb.m_sourceSsrc] = Simulator::Now().GetMilliSeconds();
       }
       //feedback to controller
     }
@@ -797,7 +811,12 @@ void GccNode::RecvRrPacket(Ptr<Packet> p, Address remoteAddr)
       for(const auto& rrb : rrbs)
       {
         NS_ASSERT(m_localSsrc == rrb.m_sourceSsrc || (m_srcSsrcSet.find(rrb.m_sourceSsrc) != m_srcSsrcSet.end()));
-        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRrBlocks, ssrc : "<<rrb.m_sourceSsrc<<", frac : "<<rrb.m_fractionLost<<", cumLost : "<<rrb.m_cumNumLost<<", seq : "<<rrb.m_highestSeqNum);
+      
+        uint32_t rtt =  Simulator::Now().GetMilliSeconds()-rrb.m_lastSRTime-rrb.m_SRDelay;
+     
+        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRrBlocks, ssrc : "<<rrb.m_sourceSsrc<<", frac : "<<rrb.m_fractionLost<<", cumLost : "<<rrb.m_cumNumLost<<", seq : "<<rrb.m_highestSeqNum<<", last SR Recv Time : "<<rrb.m_lastSRTime<<", SR Delay : "<<rrb.m_SRDelay<<", rtt : "<<rtt);
+
+        m_lastSrRecvTime[rrb.m_sourceSsrc] = Simulator::Now().GetMilliSeconds();
       }
       //feedback to controller
     }

@@ -24,8 +24,6 @@
  */
 #include "gcc-sender-controller.h"
 
-namespace ns3 {
-
 namespace rmcat {
 const int kDefaultMaxBitrateBps = 1000000000;
 const int64_t kLowBitrateLogPeriodMs = 10000;
@@ -145,7 +143,7 @@ void GccSenderController::ApplyReceiverEstimatedBitrate(uint32_t Received_Estima
 }
 
 
-void GccSenderController::ApplyLossBasedBitrate(const std::vector<GccRtcpHeader::RecvReportBlock>& report_blocks,
+void GccSenderController::ApplyLossBasedBitrate(const std::vector<ns3::GccRtcpHeader::RecvReportBlock>& report_blocks,
                                                 int64_t nowMs) {
     // TODO Loss Based Controller Implementation
     
@@ -157,7 +155,7 @@ void GccSenderController::ApplyLossBasedBitrate(const std::vector<GccRtcpHeader:
    
 }
 
-void GccSenderController::OnReceivedRtcpReceiverReportBlocks(const std::vector<GccRtcpHeader::RecvReportBlock>& report_blocks, int64_t nowMs){
+void GccSenderController::OnReceivedRtcpReceiverReportBlocks(const std::vector<ns3::GccRtcpHeader::RecvReportBlock>& report_blocks, int64_t nowMs){
     
     if(report_blocks.empty())
         return;
@@ -165,7 +163,7 @@ void GccSenderController::OnReceivedRtcpReceiverReportBlocks(const std::vector<G
     int total_packets_lost_delta = 0;
     int total_packets_delta = 0;
     
-    for (const GccRtcpHeader::RecvReportBlock& report_block : report_blocks){
+    for (const ns3::GccRtcpHeader::RecvReportBlock& report_block : report_blocks){
         auto it = last_report_blocks_.find(report_block.m_sourceSsrc);
         if (it != last_report_blocks_.end()) {
             auto number_of_packets = report_block.m_highestSeqNum -
@@ -379,5 +377,4 @@ void GccSenderController::updateMetrics() {
 }
 */
 
-}
 }
