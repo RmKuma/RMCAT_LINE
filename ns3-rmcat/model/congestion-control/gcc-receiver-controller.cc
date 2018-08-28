@@ -31,9 +31,7 @@ namespace rmcat {
 GccRecvController::GccRecvController() :
     estimated_SendingBps_{0},      // Initialized Estimated Sending Bps TODO 
     
-    m_lastTimeCalcUs{0},
     m_lastTimeCalcValid{false},
-    m_QdelayUs{0},
     m_ploss{0},
     m_plr{0.f},
     m_RecvR{0.},
@@ -124,10 +122,8 @@ GccRecvController::~GccRecvController() {
 */
 
 void GccRecvController::reset() {
-    m_lastTimeCalcUs = 0;
     m_lastTimeCalcValid = false;
 
-    m_QdelayUs = 0;
     m_ploss = 0;
     m_plr = 0.f;
     m_RecvR = 0.;
@@ -138,6 +134,10 @@ void GccRecvController::reset() {
 
 float GccRecvController::GetBitrate() {
     return estimated_SendingBps_;
+}
+
+bool GccRecvController::IsOveruse(){
+  return (Hypothesis_ == 'O');
 }
 
 // txTimestamp : current received packet's txTimestamp in rtp header.
@@ -289,9 +289,11 @@ void GccRecvController::UpdateGroupInfo(uint64_t nowMs, uint16_t sequence, uint6
 }
 
 void GccRecvController::UpdateDelayBasedBitrate(uint64_t nowMs,
-                                      uint16_t sequence,
-                                      uint64_t txTimestampMs, uint64_t rxTimestampMs, uint64_t packet_size, 
-				      uint64_t rxRecv_rate, uint8_t ecn){
+                                                uint16_t sequence,
+                                                uint64_t txTimestampMs,
+                                                uint64_t rxTimestampMs,
+                                                uint64_t packet_size, 
+                                                uint8_t ecn){
     UpdateGroupInfo(nowMs, sequence, txTimestampMs, rxTimestampMs, packet_size);
     
     if(m_group_changed_){
@@ -307,7 +309,8 @@ void GccRecvController::UpdateDelayBasedBitrate(uint64_t nowMs,
 	 */
 
 	// TODO
-		
+	  uint32_t rxRecv_rate = 0;
+
 		UpdateEstimator(i_arrival_, i_departure_, group_size_interval_, nowMs);
 		OveruseDetect(i_departure_, nowMs);
 		estimated_SendingBps_ = UpdateBitrate( Hypothesis_, rxRecv_rate, nowMs);
@@ -346,7 +349,6 @@ void GccRecvController::logStats(uint64_t nowMs) const {
     os  << " algo:dummy : none "
         << " ts: "     << (nowMs / 1000)
         << " loglen: none "
-        << " qdel: "   << (m_QdelayUs / 1000)
         << " ploss: "  << m_ploss
         << " plr: "    << m_plr
         << " rrate: "  << m_RecvR

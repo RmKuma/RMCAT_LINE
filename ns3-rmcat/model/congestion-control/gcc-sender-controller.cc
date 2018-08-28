@@ -49,9 +49,7 @@ const int kDefaultBitrateThresholdKbps = 0;
 
 GccSenderController::GccSenderController() :
 
-    m_lastTimeCalcUs{0},
     m_lastTimeCalcValid{false},
-    m_QdelayUs{0},
     m_ploss{0},
     m_plr{0.f},
     
@@ -93,16 +91,17 @@ void GccSenderController::setCurrentBw(float newBw) {
 */
 
 void GccSenderController::reset() {
-    m_lastTimeCalcUs = 0;
     m_lastTimeCalcValid = false;
 
-    m_QdelayUs = 0;
     m_ploss = 0;
     m_plr = 0.f;
 }
 
 uint32_t GccSenderController::getBitrate() {
     return current_bitrate_bps_;
+}
+
+void GccSenderController::processBye(uint32_t ssrc){
 }
 
 void GccSenderController::SetSendBitrate(int bitrate) {
@@ -346,35 +345,5 @@ void GccSenderController::CapBitrate(uint32_t bitrate_bps){
 }
 
 
-
-
-
-
-/*
-float GccSenderController::getBandwidth(uint64_t nowUs) const {
-
-    return m_initBw;
-}
-*/
-
-/*
-void GccSenderController::updateMetrics() {
-    uint64_t qdelayUs;
-    bool qdelayOK = getCurrentQdelay(qdelayUs);
-    if (qdelayOK) m_QdelayUs = qdelayUs;
-
-    float rrate;
-    bool rrateOK = getCurrentRecvRate(rrate);
-    if (rrateOK) m_RecvR = rrate;
-
-    uint32_t nLoss;
-    float plr;
-    bool plrOK = getPktLossInfo(nLoss, plr);
-    if (plrOK) {
-        m_ploss = nLoss;
-        m_plr = plr;
-    }
-}
-*/
 
 }

@@ -62,35 +62,37 @@ public:
      * Function for updating delay based controller's bitrate(Ar).
      * This function will process "Overuse Detecting" and "Overuse Estimating" in internet draft.
      */
-    void UpdateDelayBasedBitrate(uint64_t nowUs,
+    void UpdateDelayBasedBitrate(uint64_t nowMs,
                                  uint16_t sequence,
                                  uint64_t txTimestampMs,
-				 uint64_t rxTimestampMs,
-				 uint64_t packet_size,
-                                 uint64_t rxRecv_rate, uint8_t ecn);
+                          			 uint64_t rxTimestampMs,
+                        				 uint64_t packet_size,
+                                 uint8_t ecn);
     /**
      * Simplistic implementation of bandwidth getter. It returns a hard-coded
      * bandwidth value in bits per second
      */
-    // float getBandwidth(uint64_t nowUs) const;
+    // float getBandwidth(uint64_t nowMs) const;
     
     /**
      * Get Funtion of estimated_SendingBps_
      */
     float GetBitrate();
 
+    bool IsOveruse();
+
 private:
     // void updateNetMetrics();
-    void logStats(uint64_t nowUs) const;
+    void logStats(uint64_t nowMs) const;
 
-    void UpdateGroupInfo(uint64_t nowUs, uint16_t sequence, uint64_t txTimestamp, uint64_t rxTimestamp, uint64_t packet_size);
+    void UpdateGroupInfo(uint64_t nowMs, uint16_t sequence, uint64_t txTimestamp, uint64_t rxTimestamp, uint64_t packet_size);
     
     float estimated_SendingBps_;  /* Sending rate estimated by delay based controller. */
 
-    uint64_t m_lastTimeCalcUs;
+    uint64_t m_lastTimeCalcMs;
     bool m_lastTimeCalcValid;
 
-    uint64_t m_QdelayUs; /**< estimated queuing delay in microseconds */
+    uint64_t m_QdelayMs; /**< estimated queuing delay in microseconds */
     uint32_t m_ploss;  /**< packet loss count within configured window */
     float m_plr;       /**< packet loss ratio within packet history window */
     float m_RecvR;     /**< updated receiving rate in bps */

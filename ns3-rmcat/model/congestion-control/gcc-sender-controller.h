@@ -91,19 +91,18 @@ public:
      * Simplistic implementation of bandwidth getter. It returns a hard-coded
      * bandwidth value in bits per second
      */
-    // virtual float getBandwidth(uint64_t nowUs) const;
 
     uint32_t getBitrate();
+
+    void processBye(uint32_t ssrc);
 
 private:
 
     void SetSendBitrate(int bitrate);
     void SetMinMaxBitrate(int min_bitrate, int max_bitrate);
 
-    uint64_t m_lastTimeCalcUs;
     bool m_lastTimeCalcValid;
     
-    uint64_t m_QdelayUs; /**< estimated queuing delay in microseconds */
     uint32_t m_ploss;  /**< packet loss count within configured window */
     float m_plr;       /**< packet loss ratio within packet history window */
 

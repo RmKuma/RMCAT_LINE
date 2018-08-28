@@ -545,6 +545,7 @@ void GccNode::SendRr()
       
       for(auto const& b_ssrc : m_byeSet)
       {
+        m_senderController->processBye(b_ssrc);
         if(b_ssrc != m_localSsrc)
         {
           m_srcSsrcSet.erase(b_ssrc);
@@ -616,7 +617,7 @@ void GccNode::SendRemb()
   rembSet.insert(m_localSsrc);
   NS_ASSERT(rembSet.size() <= RembHeader::MAX_SSRCS_NUM);
 
-  uint32_t bitrate = 0; //set..
+  uint32_t bitrate = m_recvController->GetBitrate();; 
   NS_ASSERT(header.AddRembFeedback(bitrate, rembSet) == RembHeader::RTCP_NONE);
 
   Ptr<Packet> packet = Create<Packet> ();
@@ -699,10 +700,14 @@ void GccNode::RecvPacket (Ptr<Socket> socket)
         NS_LOG_DEBUG("Invalid Packet is received");
         exit(1);
     }
+
+    m_rSend = m_senderController->getBitrate();
 }
 
 void GccNode::RecvDataPacket(Ptr<Packet> p, Address remoteAddr)
 {
+
+    uint64_t nowMs = Simulator::Now().GetMilliSeconds();
 
     RtpHeader header{};
     NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvDataPacket, " << p->ToString ());
@@ -722,15 +727,16 @@ void GccNode::RecvDataPacket(Ptr<Packet> p, Address remoteAddr)
     m_recvPackets[recvSsrc]++;
     m_recvSeq[recvSsrc] = seq;
 
+    m_recvController->UpdateDelayBasedBitrate(nowMs, seq, header.GetTimestamp(), nowMs, p->GetSize(), 0);
+
     NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvDataPacket, Lost : "<<m_lost[recvSsrc]<<", cumLost : "<<m_cumLost[recvSsrc]<<", recvPackets : "<<m_recvPackets[recvSsrc]++);
 
     m_receiving = true;
-
-    //AddFeedback (header.GetSequence (), recvTimestampMs);
 }
 
 void GccNode::RecvSrPacket(Ptr<Packet> p, Address remoteAddr)
 {
+    uint64_t nowMs = Simulator::Now().GetMilliSeconds();
     GccRtcpHeader header{};
     NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvSrPacket, " << p->ToString ());
     p->RemoveHeader (header);
@@ -754,13 +760,13 @@ void GccNode::RecvSrPacket(Ptr<Packet> p, Address remoteAddr)
       {
         NS_ASSERT(m_localSsrc == rrb.m_sourceSsrc || (m_srcSsrcSet.find(rrb.m_sourceSsrc) != m_srcSsrcSet.end()));
      
-        uint32_t rtt =  Simulator::Now().GetMilliSeconds()-rrb.m_lastSRTime-rrb.m_SRDelay;
+        uint32_t rtt = nowMs-rrb.m_lastSRTime-rrb.m_SRDelay;
      
         NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRrBlocks, ssrc : "<<rrb.m_sourceSsrc<<", frac : "<<rrb.m_fractionLost<<", cumLost : "<<rrb.m_cumNumLost<<", seq : "<<rrb.m_highestSeqNum<<", last SR Recv Time : "<<rrb.m_lastSRTime<<", SR Delay : "<<rrb.m_SRDelay<<", rtt : "<<rtt);
         
         m_lastSrRecvTime[rrb.m_sourceSsrc] = Simulator::Now().GetMilliSeconds();
       }
-      //feedback to controller
+      m_senderController->OnReceivedRtcpReceiverReportBlocks(rrbs, nowMs);
     }
     
     if(!bye.m_ssrcSet.empty())
@@ -792,6 +798,8 @@ void GccNode::RecvSrPacket(Ptr<Packet> p, Address remoteAddr)
 
 void GccNode::RecvRrPacket(Ptr<Packet> p, Address remoteAddr)
 {
+
+    uint64_t nowMs = Simulator::Now().GetMilliSeconds();
     NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRrPacket, " << p->ToString ());
     
     GccRtcpHeader header{};
@@ -812,14 +820,15 @@ void GccNode::RecvRrPacket(Ptr<Packet> p, Address remoteAddr)
       {
         NS_ASSERT(m_localSsrc == rrb.m_sourceSsrc || (m_srcSsrcSet.find(rrb.m_sourceSsrc) != m_srcSsrcSet.end()));
       
-        uint32_t rtt =  Simulator::Now().GetMilliSeconds()-rrb.m_lastSRTime-rrb.m_SRDelay;
+        uint32_t rtt = nowMs-rrb.m_lastSRTime-rrb.m_SRDelay;
      
         NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRrBlocks, ssrc : "<<rrb.m_sourceSsrc<<", frac : "<<rrb.m_fractionLost<<", cumLost : "<<rrb.m_cumNumLost<<", seq : "<<rrb.m_highestSeqNum<<", last SR Recv Time : "<<rrb.m_lastSRTime<<", SR Delay : "<<rrb.m_SRDelay<<", rtt : "<<rtt);
 
         m_lastSrRecvTime[rrb.m_sourceSsrc] = Simulator::Now().GetMilliSeconds();
       }
-      //feedback to controller
     }
+
+    m_senderController->OnReceivedRtcpReceiverReportBlocks(rrbs, nowMs);
     
     if(!bye.m_ssrcSet.empty())
     {
