@@ -68,6 +68,7 @@ private:
     void SendRr();
 //   void SendBye(); /*Bye packet should be followed by SR/RR as RFC 3550*/
     void SendRemb();
+    uint32_t GetNextRtcpTime();
 
 
     /*Recv Methods*/
@@ -92,7 +93,7 @@ private:
     //Sender 
     uint32_t m_localSsrc; //main ssrc
     std::set<uint32_t> m_srcSsrcSet; //ssrcs for multiple stream
-    uint32_t m_numSsrc;
+    uint32_t m_numSrcSsrc;
     
     std::map<uint32_t, uint16_t> m_sequence;
     std::map<uint32_t, uint32_t> m_rtpTsOffset;
@@ -108,14 +109,12 @@ private:
     std::map<uint32_t, std::deque<uint32_t>> m_rateShapingBuf;
     std::map<uint32_t, uint32_t> m_rateShapingBytes;
     uint64_t m_totalRateShapingBuf;
-    uint64_t m_nextSendTstmpUs;
-    uint64_t m_nextRtcpTstmpUs;
 
     uint32_t m_nextEnqSsrcIndex;
     uint32_t m_nextSendSsrcIndex;
     std::map<uint32_t, uint64_t> m_enqBytes;
     std::map<uint32_t, uint64_t> m_maxSize; //0 means infinite size
-    std::map<uint32_t, bool> m_complete;
+    bool m_complete;
 
 
     std::set<uint32_t> m_byeSet;
@@ -129,6 +128,7 @@ private:
     std::map<uint32_t, uint32_t> m_lost;
     std::map<uint32_t, uint32_t> m_cumLost;
     std::map<uint32_t, uint32_t> m_recvPackets;
+    bool m_receiving;
 
 };
 

@@ -124,6 +124,7 @@ uint32_t GccRtcpHeader::DeserializeCommon (Buffer::Iterator& start)
     m_length = start.ReadNtohU16 ();
     m_sendSsrc = start.ReadNtohU32 ();
     NS_ASSERT (version == GCC_RTP_VERSION);
+
     return GetSerializedSize ();
 
 }
@@ -132,7 +133,8 @@ void GccRtcpHeader::Serialize (Buffer::Iterator start) const
 {
     NS_ASSERT (m_length >= 1);
     SerializeCommon (start);
-
+    NS_LOG_INFO("GccRtcpHeader::Serialize");
+    
     if(m_packetType == RTCP_SR)
     {
       start.WriteHtonU32 (m_sendReportBlock.m_mostSigNTP);
@@ -178,8 +180,8 @@ void GccRtcpHeader::Serialize (Buffer::Iterator start) const
 
 uint32_t GccRtcpHeader::Deserialize (Buffer::Iterator start)
 {
-    DeserializeCommon (start);
-
+    DeserializeCommon(start);
+    NS_LOG_INFO("GccRtcpHeader::Deserialize");
     size_t len = m_length-1; //m_sendSsrc
 
     if(m_packetType == RTCP_SR)
@@ -228,7 +230,7 @@ uint32_t GccRtcpHeader::Deserialize (Buffer::Iterator start)
         len--;
       }
     }
-
+    
     NS_ASSERT(len == 0);
 
     return GetSerializedSize();
@@ -328,7 +330,7 @@ GccRtcpHeader::ByeBlock GccRtcpHeader::GetBye() const
 
 void GccRtcpHeader::PrintN (std::ostream& os) const
 {
-    os << "GccRtcp Common Header - version = " << int (GCC_RTP_VERSION)
+    os << "GccRtcp/Remb Common Header - version = " << int (GCC_RTP_VERSION)
        << ", padding = " << (m_padding ? "yes" : "no")
        << ", type/count = " << int (m_typeOrCnt)
        << ", packet type = " << int (m_packetType)
@@ -428,7 +430,8 @@ RembHeader::RembHeader ()
 
 RembHeader::RembHeader (uint8_t packetType)
 : GccRtcpHeader{packetType}
-{}
+{
+}
 
 RembHeader::RembHeader (uint8_t packetType, uint8_t subType)
 : GccRtcpHeader{packetType,subType}
@@ -437,6 +440,26 @@ RembHeader::RembHeader (uint8_t packetType, uint8_t subType)
 }
 
 RembHeader::~RembHeader () {}
+
+TypeId RembHeader::GetTypeId ()
+{
+    static TypeId tid = TypeId ("RembHeader")
+      .SetParent<GccRtcpHeader> ()
+      .AddConstructor<RembHeader> ()
+    ;
+    return tid;
+}
+
+TypeId RembHeader::GetInstanceTypeId () const
+{
+    return GetTypeId ();
+}
+
+uint32_t RembHeader::GetSerializedSize () const
+{
+    return 1 + sizeof (m_packetType) + sizeof (m_length) + m_length*4;
+}
+
 
 RembHeader::RejectReason 
 RembHeader::AddRembFeedback (uint32_t bitrate, std::set<uint32_t>& slist)
@@ -468,6 +491,7 @@ RembHeader::AddRembFeedback (uint32_t bitrate, std::set<uint32_t>& slist)
 
 void RembHeader::Serialize (Buffer::Iterator start) const
 {
+    NS_LOG_INFO("RembHeader::Serialize");
     NS_ASSERT (m_length > 1);
     SerializeCommon (start);
 
@@ -492,9 +516,10 @@ void RembHeader::Serialize (Buffer::Iterator start) const
       NS_LOG_ERROR("REMB Packet Type ERROR! (Serialize)");
 }
 
-uint32_t RembHeader::Deserialize (Buffer::Iterator start)
+uint32_t RembHeader::Deserialize (ns3::Buffer::Iterator start)
 {
-    DeserializeCommon (start);
+    NS_LOG_INFO("RembHeader::Deserialize");
+    GccRtcpHeader::DeserializeCommon (start);
 
     size_t len = m_length-1; //m_sendSsrc
 
