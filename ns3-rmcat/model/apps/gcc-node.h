@@ -64,8 +64,7 @@ private:
     void SendPacket (uint64_t msSlept);
     void SendOverSleep (uint32_t bytesToSend, uint32_t send_ssrc);
     void SendRtcp(GccRtcpHeader header, bool reschedule);
-    void SendSr();
-    void SendRr();
+    void CreateRtcp();
 //   void SendBye(); /*Bye packet should be followed by SR/RR as RFC 3550*/
     void SendRemb();
     uint32_t GetNextRtcpTime();
@@ -74,8 +73,7 @@ private:
     /*Recv Methods*/
     void RecvPacket (Ptr<Socket> socket);
     void RecvDataPacket(Ptr<Packet> p, Address remoteAddr);
-    void RecvSrPacket(Ptr<Packet> p, Address remoteAddr);
-    void RecvRrPacket(Ptr<Packet> p, Address remoteAddr);
+    void RecvRtcp(Ptr<Packet> p, Address remoteAddr);
     void RecvRembPacket(Ptr<Packet> p, Address remoteAddr);
 
 
@@ -130,6 +128,13 @@ private:
     std::map<uint32_t, uint32_t> m_lastSrRecvTime;
     bool m_receiving;
 
+
+    //Log
+    double m_pDelay;
+    double m_recvDataBytes;
+    double m_recvAllBytes;
+    ns3::Time m_lastThroCheckTime;
+    ns3::Time m_lastDelayCheckTime;
 
 };
 
