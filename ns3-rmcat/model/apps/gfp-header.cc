@@ -237,21 +237,13 @@ uint32_t GccRtcpHeader::Deserialize (Buffer::Iterator start)
 }
 
 GccRtcpHeader::RejectReason
-GccRtcpHeader::AddRRFeedback (uint32_t ssrc, uint8_t frac, uint32_t lost, uint32_t seq, uint32_t jitter, uint32_t ltime, uint32_t delay)
+GccRtcpHeader::AddRRFeedback (std::vector<RecvReportBlock>& rrbs)
 {
   if(m_packetType == RTCP_RR || m_packetType == RTCP_SR)
   {
-    if(m_recvReportBlocks.size() < MAX_RB_NUM)
+    if(rrbs.size() < MAX_RB_NUM)
     {
-      RecvReportBlock rb;
-      rb.m_sourceSsrc = ssrc;
-      rb.m_fractionLost = frac;
-      rb.m_cumNumLost = lost;
-      rb.m_highestSeqNum = seq;
-      rb.m_lastSRTime = ltime;
-      rb.m_SRDelay = delay;
-
-      m_recvReportBlocks.push_back(rb);
+      m_recvReportBlocks = rrbs;
       if(!UpdateRRLength())
         NS_LOG_ERROR("Failed to update RR RTCP Feedback Length");
     }
@@ -265,16 +257,11 @@ GccRtcpHeader::AddRRFeedback (uint32_t ssrc, uint8_t frac, uint32_t lost, uint32
 }
 
 GccRtcpHeader::RejectReason
-GccRtcpHeader::AddSRFeedback (uint8_t mNTP, uint32_t nNTP, uint32_t timestamp, uint32_t pCnt, uint32_t oCnt)
+GccRtcpHeader::AddSRFeedback (SendReportBlock& srb)
 {
   if(m_packetType == RTCP_SR)
   {
-    m_sendReportBlock.m_mostSigNTP = mNTP;
-    m_sendReportBlock.m_leastSigNTP = nNTP;
-    m_sendReportBlock.m_rtpTimeStamp = timestamp;
-    m_sendReportBlock.m_packetCnt = pCnt;
-    m_sendReportBlock.m_octCnt = oCnt;
-
+    m_sendReportBlock = srb;
     if(!UpdateSRLength())
       NS_LOG_ERROR("Failed to update SR RTCP Feedback Length");
   }

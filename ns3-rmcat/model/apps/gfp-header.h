@@ -214,8 +214,8 @@ public:
     virtual uint32_t Deserialize (ns3::Buffer::Iterator start);
     virtual void Print (std::ostream& os) const;
     
-    RejectReason AddRRFeedback (uint32_t ssrc, uint8_t frac, uint32_t lost, uint32_t seq, uint32_t jitter, uint32_t ltime, uint32_t delay);
-    RejectReason AddSRFeedback (uint8_t mNTP, uint32_t nNTP, uint32_t timestamp, uint32_t pCnt, uint32_t oCnt);
+    RejectReason AddRRFeedback (std::vector<RecvReportBlock>& rrbs);
+    RejectReason AddSRFeedback (SendReportBlock& srb);
     RejectReason AddByeFeedback (std::set<uint32_t>& ssrcSet);
 
     bool IsPadding () const;

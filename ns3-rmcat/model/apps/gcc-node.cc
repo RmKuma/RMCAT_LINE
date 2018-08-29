@@ -190,7 +190,7 @@ bool GccNode::AddMulStream(uint32_t num, uint64_t* stream_size)
   for(uint32_t i=0;i<num;i++)
   {
     //uint32_t new_ssrc = rand(); //optional (not affect GCC performance)
-    uint32_t new_ssrc = m_localSsrc + i;
+    uint32_t new_ssrc = m_localSsrc + i+1;
 
     m_srcSsrcSet.insert(new_ssrc);
     m_maxSize[new_ssrc] = stream_size[i];
@@ -212,9 +212,10 @@ void GccNode::StartApplication ()
     if(m_maxSize[m_localSsrc] == 0) //only receive mode 
       m_complete = true;
 
-
+    NS_LOG_INFO(ns3::Simulator::Now().ToDouble(Time::S)<<" GccNode::StartApplication local ssrc : "<<m_localSsrc);
     for(const auto& ssrc : m_srcSsrcSet)
     {
+      NS_LOG_INFO(ns3::Simulator::Now().ToDouble(Time::S)<<" GccNode::StartApplication sub ssrc : "<<ssrc);
       m_sequence[ssrc] = rand();
       m_rtpTsOffset[ssrc] = rand();
       m_rateShapingBytes[ssrc] = 0;
@@ -253,6 +254,8 @@ void GccNode::StopApplication ()
       m_rateShapingBuf[ssrc].clear();
       m_rateShapingBytes[ssrc] = 0;
     }
+
+    m_socket = NULL;
 }
 
 /*Send Methods*/
@@ -270,6 +273,9 @@ void GccNode::EnqueuePacket ()
 
     for(uint32_t i = 0;i<m_numSrcSsrc;i++)
     {
+      if(m_nextEnqSsrcIndex == m_srcSsrcSet.size()+1)
+        m_nextEnqSsrcIndex = 0;
+
       if(m_nextEnqSsrcIndex == 0)
         enq_ssrc = m_localSsrc;
       else
@@ -307,10 +313,13 @@ void GccNode::EnqueuePacket ()
     m_rateShapingBytes[enq_ssrc] += bytesToSend;
     m_enqBytes[enq_ssrc] += bytesToSend;
     m_totalRateShapingBuf++;
+    m_nextEnqSsrcIndex++;
+    if(m_nextEnqSsrcIndex == m_srcSsrcSet.size()+1)
+      m_nextEnqSsrcIndex = 0;
 
     NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::EnqueuePacket, packet enqueued, packet length: " << bytesToSend
                  << ", buffer size: " << m_rateShapingBuf[enq_ssrc].size ()
-                 << ", buffer bytes: " << m_rateShapingBytes[enq_ssrc] << ", total enqueue bytes : "<<m_enqBytes[enq_ssrc]);
+                 << ", buffer bytes: " << m_rateShapingBytes[enq_ssrc] << ", total enqueue bytes : "<<m_enqBytes[enq_ssrc]<<", Ssrc : "<<enq_ssrc);
 
     double secsToNextEnqPacket = codec->second;
     Time tNext{Seconds (secsToNextEnqPacket)};
@@ -328,20 +337,27 @@ void GccNode::SendPacket (uint64_t msSlept)
     bool can_send = false;
     for(uint32_t i=0;i<m_numSrcSsrc;i++)
     {
+      if(m_nextSendSsrcIndex == m_srcSsrcSet.size()+1)
+        m_nextSendSsrcIndex = 0;
+
       if(m_nextSendSsrcIndex == 0)
         send_ssrc = m_localSsrc;
       else
       {
         std::set<uint32_t>::iterator it = m_srcSsrcSet.begin();
-        for(uint32_t i=0;i<m_nextEnqSsrcIndex-1;i++)
+        for(uint32_t i=0;i<m_nextSendSsrcIndex-1;i++)
+        {
           it++;
+        }
         send_ssrc = *it;
       }
 
       if(m_rateShapingBuf[send_ssrc].size() == 0)
       {
         if(m_enqBytes[send_ssrc] >= m_maxSize[send_ssrc] && m_byeSet.find(send_ssrc) == m_byeSet.end())
+        {
           m_byeSet.insert(send_ssrc);
+        }
         
         m_nextSendSsrcIndex++;
         if(m_nextSendSsrcIndex == m_srcSsrcSet.size()+1)
@@ -357,7 +373,7 @@ void GccNode::SendPacket (uint64_t msSlept)
 
     if(!can_send)
     {
-      NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"All stream buffer is empty.");
+      NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::SendPacket, All stream buffer is empty.");
       return;
     }
    
@@ -371,10 +387,14 @@ void GccNode::SendPacket (uint64_t msSlept)
     m_totalRateShapingBuf--;
     NS_ASSERT (m_rateShapingBytes[send_ssrc] >= bytesToSend);
     m_rateShapingBytes[send_ssrc] -= bytesToSend;
-
+    m_nextSendSsrcIndex++;
+    if(m_nextSendSsrcIndex == m_srcSsrcSet.size()+1)
+      m_nextSendSsrcIndex = 0;
+      
     NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::SendPacket, packet dequeued, packet length: " << bytesToSend
                  << ", buffer size: " << m_rateShapingBuf[send_ssrc].size ()
-                 << ", buffer bytes: " << m_rateShapingBytes[send_ssrc]);
+                 << ", buffer bytes: " << m_rateShapingBytes[send_ssrc]
+                 << ", Send Ssrc : "<<send_ssrc);
 
     // Synthetic oversleep: random uniform [0% .. 1%]
     uint64_t oversleepMs = msSlept * (rand () % 100) / 10000;
@@ -422,51 +442,67 @@ void GccNode::CreateRtcp()
     if(m_sending)
     {
       header = new GccRtcpHeader(GccRtcpHeader::RTCP_SR);
-      header->SetSendSsrc(m_localSsrc);
-      
-      NS_ASSERT(header->AddSRFeedback(0,0,0,0,0) == GccRtcpHeader::RTCP_NONE); //Data in SR does not affect Gcc Performance
+
+      GccRtcpHeader::SendReportBlock srb;
+      srb.m_mostSigNTP = 0;
+      srb.m_leastSigNTP = 0;
+      srb.m_rtpTimeStamp = 0;
+      srb.m_packetCnt = 0;
+      srb.m_octCnt = 0;
+      NS_ASSERT(header->AddSRFeedback(srb) == GccRtcpHeader::RTCP_NONE); //Data in SR does not affect Gcc Performance
     }
     else
       header = new GccRtcpHeader(GccRtcpHeader::RTCP_RR);
 
+    header->SetSendSsrc(m_localSsrc);
+
     uint32_t rrSize = m_recvSsrcSet.size();
+    std::vector<GccRtcpHeader::RecvReportBlock> rrbs;
 
     for(const auto& ssrc : m_recvSsrcSet)
     {
+      GccRtcpHeader::RecvReportBlock rrb;
       double fractionRatio = m_lost[ssrc]/(double)m_recvPackets[ssrc];
-      uint8_t frac = uint8_t(255.0 * fractionRatio);
-      uint32_t ret = 0;
       uint32_t nowMs = Simulator::Now().GetMilliSeconds();
-      NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::Add RrBlock, Size "<<rrSize);
 
       if(m_lastSrRecvTime.find(ssrc) == m_lastSrRecvTime.end())
         m_lastSrRecvTime[ssrc] = 0;
-      ret = header->AddRRFeedback(ssrc, frac, m_cumLost[ssrc], m_recvSeq[ssrc], 0, m_lastSrRecvTime[ssrc], nowMs-m_lastSrRecvTime[ssrc]);
 
-      if(ret == GccRtcpHeader::RTCP_TOO_LONG)
+      rrb.m_sourceSsrc = ssrc;
+      rrb.m_fractionLost = uint8_t(255.0 * fractionRatio);
+      rrb.m_cumNumLost = m_cumLost[ssrc];
+      rrb.m_highestSeqNum = m_recvSeq[ssrc];
+      rrb.m_interArrivalJitter = 0;
+      rrb.m_lastSRTime = m_lastSrRecvTime[ssrc];
+      rrb.m_SRDelay = nowMs-m_lastSrRecvTime[ssrc];
+
+      rrbs.push_back(rrb);
+      if(rrbs.size() == GccRtcpHeader::MAX_RB_NUM)
       {
-        header->SetTypeOrCount(31); //maximum number of RR blocks by RFC & WebRTC
-        rrSize -= 31;
+        header->SetTypeOrCount(GccRtcpHeader::MAX_RB_NUM); //maximum number of RR blocks by RFC & WebRTC
+        rrSize -= GccRtcpHeader::MAX_RB_NUM;
+        NS_ASSERT(header->AddRRFeedback(rrbs) == GccRtcpHeader::RTCP_NONE);
         SendRtcp(*header, false);
         
         delete header;
         header = new GccRtcpHeader(GccRtcpHeader::RTCP_RR);
-        ret = header->AddRRFeedback(ssrc, frac, m_cumLost[ssrc], m_recvSeq[ssrc], 0, m_lastSrRecvTime[ssrc], nowMs-m_lastSrRecvTime[ssrc]);
+        rrbs.clear();
       }
-      NS_ASSERT(ret == GccRtcpHeader::RTCP_NONE);
       m_lost[ssrc] = 0;
       m_recvPackets[ssrc] = 0;
     }
 
+    NS_ASSERT(header->AddRRFeedback(rrbs) == GccRtcpHeader::RTCP_NONE);
     header->SetTypeOrCount(rrSize);
 
     if(!m_byeSet.empty())
     { 
       NS_ASSERT(header->AddByeFeedback(m_byeSet) == GccRtcpHeader::RTCP_NONE);
-      NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"Add Bye Set, size = "<<m_byeSet.size());
       
       for(auto const& b_ssrc : m_byeSet)
       {
+        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::CreateRtcp, add bye ssrc : "<<b_ssrc);
+        NS_ASSERT(b_ssrc == m_localSsrc || m_srcSsrcSet.find(b_ssrc) != m_srcSsrcSet.end());
         if(b_ssrc != m_localSsrc)
         {
           m_srcSsrcSet.erase(b_ssrc);
@@ -493,13 +529,12 @@ void GccNode::CreateRtcp()
       
       if(m_totalRateShapingBuf == 0 && m_complete == true && m_srcSsrcSet.empty())
       {
-        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"All  streams are completed");
+        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" GccNode::CreateRtcp, All  streams are completed");
         Simulator::Cancel(m_sendEvent);
         Simulator::Cancel(m_enqueueEvent);
         
         if(!m_receiving)
         {
-          NS_LOG_INFO("RTCP Stop when send BYE "<<m_localSsrc);
           Simulator::Cancel(m_rtcpEvent);
           Simulator::Cancel(m_rembEvent);
           SendRtcp(*header, false);
@@ -530,8 +565,6 @@ void GccNode::SendRtcp(GccRtcpHeader header, bool reschedule)
 void GccNode::SendRemb()
 {
   RembHeader header(RembHeader::RTP_REMB);
-  NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::SendRemb");
-
   header.SetSendSsrc(m_localSsrc);
 
   std::set<uint32_t> rembSet = m_recvSsrcSet;
@@ -568,8 +601,6 @@ uint32_t GccNode::GetNextRtcpTime()
     // range [1/2,3/2] times the calculated interval.
     uint32_t rtcpNext = rand()%(minIntervalMs+1) + minIntervalMs/2;
 
-    NS_LOG_INFO("Next RTCP Send Interval : "<<rtcpNext);
-
     return rtcpNext;
 }
 
@@ -587,22 +618,26 @@ void GccNode::RecvPacket (Ptr<Socket> socket)
     NS_ASSERT (rIPAddress == m_destIp);
     NS_ASSERT (rport == m_destPort);
 
-    //check payload type
-    auto tmp_packet = Packet->Copy();
-    RtpHeader tmp_header{};
-    tmp_packet->RemoveHeader(tmp_header);
-    uint32_t pt;
-    if(tmp_header.IsMarker()) //if RTCP packet, marker is true otherwise 0
-    {
-      auto tmp_packet2 = Packet->Copy();
-      RtcpHeader tmp_header2{};
-      tmp_packet2->RemoveHeader(tmp_header2);
-      pt = tmp_header2.GetPacketType();
-    }
-    else
-      pt = tmp_header.GetPayloadType();
+    //check packet type
+    std::ostream stream(nullptr);
+    std::stringbuf str;
+    stream.rdbuf(&str);
+    Packet->Print(stream);
+    std::string p_str = str.str();
 
-    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::packet type : "<<pt);
+    uint32_t pt;
+    if(p_str.find("RtpHeader") != std::string::npos) 
+      pt = 96; 
+    else if(p_str.find("GccRtcpHeader") != std::string::npos)
+      pt = GccRtcpHeader::RTCP_SR;
+    else if(p_str.find("RembHeader") != std::string::npos)
+      pt = RembHeader::RTP_REMB;
+    else
+    {
+      NS_LOG_ERROR("GccNode::RecvPacket, Invalid Packet Type");
+      exit(1);
+    }
+
     switch(pt)
     {
       case 96:
@@ -616,7 +651,7 @@ void GccNode::RecvPacket (Ptr<Socket> socket)
         RecvRembPacket(Packet, remoteAddr);
         break;
       default:
-        NS_LOG_DEBUG("Invalid Packet is received");
+        NS_LOG_ERROR("GccNode::RecvPacket, Invalid Packet Type");
         exit(1);
     }
 
@@ -706,7 +741,7 @@ void GccNode::RecvRtcp(Ptr<Packet> p, Address remoteAddr)
      
         uint32_t rtt = nowMs-rrb.m_lastSRTime-rrb.m_SRDelay;
      
-        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRrBlocks, ssrc : "<<rrb.m_sourceSsrc<<", frac : "<<rrb.m_fractionLost<<", cumLost : "<<rrb.m_cumNumLost<<", seq : "<<rrb.m_highestSeqNum<<", last SR Recv Time : "<<rrb.m_lastSRTime<<", SR Delay : "<<rrb.m_SRDelay<<", rtt : "<<rtt);
+        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRtcp, ssrc : "<<rrb.m_sourceSsrc<<", frac : "<<rrb.m_fractionLost<<", cumLost : "<<rrb.m_cumNumLost<<", seq : "<<rrb.m_highestSeqNum<<", last SR Recv Time : "<<rrb.m_lastSRTime<<", SR Delay : "<<rrb.m_SRDelay<<", rtt : "<<rtt);
         
         m_lastSrRecvTime[rrb.m_sourceSsrc] = Simulator::Now().GetMilliSeconds();
       }
@@ -719,6 +754,7 @@ void GccNode::RecvRtcp(Ptr<Packet> p, Address remoteAddr)
       
       for(auto const& b_ssrc : bye.m_ssrcSet)
       {
+        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRtcp, receive bye Ssrc : "<<b_ssrc);
         NS_ASSERT(m_recvSsrcSet.find(b_ssrc) != m_recvSsrcSet.end());
         m_recvSsrcSet.erase(b_ssrc);
         m_recvSeq.erase(b_ssrc);
@@ -731,7 +767,6 @@ void GccNode::RecvRtcp(Ptr<Packet> p, Address remoteAddr)
           Simulator::Cancel (m_rembEvent);
           if(m_complete==true && m_srcSsrcSet.empty())
           {
-            NS_LOG_INFO("RTCP Stop "<<m_localSsrc);
             Simulator::Cancel(m_rtcpEvent);
           }
         }
