@@ -23,6 +23,11 @@
  * @version 0.1.0
  */
 #include "gcc-sender-controller.h"
+#include "ns3/log.h"
+#include "ns3/simulator.h"
+
+NS_LOG_COMPONENT_DEFINE("GccSenderController");
+
 
 namespace rmcat {
 const int kDefaultMaxBitrateBps = 1000000000;
@@ -207,7 +212,9 @@ void GccSenderController::UpdatePacketsLost(int packets_lost, int number_of_pack
     has_decreased_since_last_fraction_loss_ = false;                       
     int64_t lost_q8 = lost_packets_since_last_loss_update_ << 8;           
     int64_t expected = expected_packets_since_last_loss_update_;           
-    last_fraction_loss_ = std::min<int>(lost_q8 / expected, 255);          
+    last_fraction_loss_ = std::min<int>(lost_q8 / expected, 255);       
+
+    NS_LOG_INFO( ns3::Simulator::Now().ToDouble(ns3::Time::S) << " GccSenderController::UpdatePacketsLost loss ratio : " << last_fraction_loss_/256.0f); 
                                                                          
     // Reset accumulators.                                                 
                                                                          

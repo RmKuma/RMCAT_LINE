@@ -70,6 +70,7 @@ def build(bld):
         'model/topo/wifi-topo.h',
         'model/congestion-control/gcc-receiver-controller.h',
         'model/congestion-control/gcc-sender-controller.h',
+        'model/congestion-control/rate_statistics.h',
        ]
 
     if bld.env.ENABLE_EXAMPLES:
