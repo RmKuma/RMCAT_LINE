@@ -224,6 +224,8 @@ int main (int argc, char *argv[])
         LogComponentEnable ("GccNode", LOG_LEVEL_ALL);
         LogComponentEnable ("GfpHeader", LOG_LEVEL_ALL);
         //LogComponentEnable ("Packet", LOG_FUNCTION);
+        //LogComponentEnable ("GccReceiverController", LOG_LEVEL_ALL);
+        //LogComponentEnable ("GccSenderController", LOG_LEVEL_ALL);
     }
 
     // configure default TCP parameters
