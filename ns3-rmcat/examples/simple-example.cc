@@ -41,6 +41,7 @@
 #include "ns3/traffic-control-helper.h"
 #include "ns3/ipv4-address-helper.h"
 #include "ns3/core-module.h"
+#include "ns3/ipv4-global-routing-helper.h"
 
 #include "ns3/gcc-node.h"
 #include <string>
@@ -63,34 +64,40 @@ static NodeContainer BuildExampleTopo (uint64_t bps,
                                        uint32_t msQdelay)
 {
     NodeContainer nodes;
-    nodes.Create (2);
+    nodes.Create(3);
 
-    PointToPointHelper pointToPoint;
-    pointToPoint.SetDeviceAttribute ("DataRate", DataRateValue  (DataRate (bps)));
-    pointToPoint.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (msDelay)));
+    NodeContainer n0n1;
+    n0n1.Add (nodes.Get(0));
+    n0n1.Add (nodes.Get(1));
+ 
+    NodeContainer n1n2;
+    n1n2.Add (nodes.Get (1));
+    n1n2.Add (nodes.Get (2));
+    
+    PointToPointHelper p2p;
+    p2p.SetDeviceAttribute ("DataRate", DataRateValue  (DataRate (bps)));
+    p2p.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (msDelay)));
     auto bufSize = std::max<uint32_t> (DEFAULT_PACKET_SIZE, bps * msQdelay / 8000);
-    pointToPoint.SetQueue ("ns3::DropTailQueue",
+    p2p.SetQueue ("ns3::DropTailQueue",
                            "Mode", StringValue ("QUEUE_MODE_BYTES"),
                            "MaxBytes", UintegerValue (bufSize));
-    NetDeviceContainer devices = pointToPoint.Install (nodes);
-
-    InternetStackHelper stack;
-    stack.Install (nodes);
-    Ipv4AddressHelper address;
-    address.SetBase ("10.1.1.0", "255.255.255.0");
-    address.Assign (devices);
-
-    // Uncomment to capture simulated traffic
-    // pointToPoint.EnablePcapAll ("rmcat-example");
-
+  
+    NetDeviceContainer dev0 = p2p.Install (n0n1);
+    NetDeviceContainer dev1 = p2p.Install (n1n2);
+    InternetStackHelper internet;
+    internet.InstallAll ();
+    Ipv4AddressHelper ipv4;
+    ipv4.SetBase ("10.1.3.0", "255.255.255.0");
+    ipv4.Assign (dev0);
+    ipv4.SetBase ("10.1.2.0", "255.255.255.0");
+    ipv4.Assign (dev1);
+    Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
+    
     // disable tc for now, some bug in ns3 causes extra delay
     TrafficControlHelper tch;
-    tch.Uninstall (devices);
-
-    AsciiTraceHelper ascii;
-    pointToPoint.EnableAsciiAll (ascii.CreateFileStream ("trace.tr"));
-    pointToPoint.EnablePcapAll ("pacap");
-
+    tch.Uninstall (dev0);
+    tch.Uninstall (dev1);
+    
     return nodes;
 }
 
@@ -115,6 +122,7 @@ static void InstallTCP (Ptr<Node> sender,
     // configure TCP sink/receiver/server
     PacketSinkHelper sink{"ns3::TcpSocketFactory",
                            InetSocketAddress{Ipv4Address::GetAny (), port}};
+
     auto serverApps = sink.Install (receiver);
     serverApps.Start (Seconds (startTime));
     serverApps.Stop (Seconds (stopTime));
@@ -188,10 +196,12 @@ static void InstallGccApps (Ptr<Node> node_1,
     //app_2->AddMulStream(4, 0);
     
     const auto fps = 30.;		// Set Video Fps.
-    auto innerCodec = new syncodecs::StatisticsCodec{fps};
-    auto codec = new syncodecs::ShapedPacketizer{innerCodec, DEFAULT_PACKET_SIZE};
-    app_1->SetCodec (std::shared_ptr<syncodecs::Codec>{codec});
-    app_2->SetCodec (std::shared_ptr<syncodecs::Codec>{codec});
+    auto innerCodec_1 = new syncodecs::StatisticsCodec{fps};
+    auto innerCodec_2 = new syncodecs::StatisticsCodec{fps};
+    auto codec_1 = new syncodecs::ShapedPacketizer{innerCodec_1, DEFAULT_PACKET_SIZE};
+    auto codec_2 = new syncodecs::ShapedPacketizer{innerCodec_2, DEFAULT_PACKET_SIZE};
+    app_1->SetCodec (std::shared_ptr<syncodecs::Codec>{codec_1});
+    app_2->SetCodec (std::shared_ptr<syncodecs::Codec>{codec_2});
 
     app_1->SetStartTime (Seconds (startTime));
     app_1->SetStopTime (Seconds (stopTime));
@@ -203,7 +213,7 @@ static void InstallGccApps (Ptr<Node> node_1,
 int main (int argc, char *argv[])
 {
     // Number of Flows 
-    int nWebRTC = 1;
+    int nRmcat = 1;
     int nTcp = 0;
     int nUdp = 0;
 
@@ -213,7 +223,7 @@ int main (int argc, char *argv[])
     std::string strArg  = "strArg default";
 
     CommandLine cmd;
-    cmd.AddValue ("webrtc", "Number of WebRTC (GCC) flows", nWebRTC);
+    cmd.AddValue ("rmcat", "Number of rmcat (GCC) flows", nRmcat);
     cmd.AddValue ("tcp", "Number of TCP flows", nTcp);
     cmd.AddValue ("udp",  "Number of UDP flows", nUdp);
     cmd.AddValue ("log", "Turn on logs", log);
@@ -223,9 +233,9 @@ int main (int argc, char *argv[])
     if (log) {
         LogComponentEnable ("GccNode", LOG_LEVEL_ALL);
         LogComponentEnable ("GfpHeader", LOG_LEVEL_ALL);
-        //LogComponentEnable ("Packet", LOG_FUNCTION);
         //LogComponentEnable ("GccReceiverController", LOG_LEVEL_ALL);
         //LogComponentEnable ("GccSenderController", LOG_LEVEL_ALL);
+        LogComponentEnable ("TcpSocketBase", LOG_LEVEL_ALL);
     }
 
     // configure default TCP parameters
@@ -246,20 +256,20 @@ int main (int argc, char *argv[])
     NodeContainer nodes = BuildExampleTopo (linkBw, msDelay, msQDelay);
 
     int port = 8000;
-    for (int i = 0; i < nWebRTC; i++) {
+    for (int i = 0; i < nRmcat; i++) {
         auto start = 10. * i;
         auto end = std::max (start + 1., endTime - start);
 
         uint16_t port_1 = port++;
         uint16_t port_2 = port++;
         if(mode == "gcc")
-          InstallGccApps (nodes.Get (0), nodes.Get (1), port_1, port_2, start, end);
+          InstallGccApps (nodes.Get (0), nodes.Get (2), port_1, port_2, start, end);
     }
 
     for (int i = 0; i < nTcp; i++) {
         auto start = 17+ 17.*i;
         auto end = std::max (start + 1., endTime - start);
-        InstallTCP (nodes.Get (0), nodes.Get (1), port++, start, end);
+        InstallTCP (nodes.Get (0), nodes.Get (2), port++, start, end);
     }
 
     // UDP parameters
@@ -267,9 +277,9 @@ int main (int argc, char *argv[])
     const uint32_t pktSize = DEFAULT_PACKET_SIZE;
 
     for (int i = 0; i < nUdp; i++) {
-        auto start = 23. * i;
+        auto start = 23+23. * i;
         auto end = std::max (start + 1., endTime - start);
-        InstallUDP (nodes.Get (0), nodes.Get (1), port++,
+        InstallUDP (nodes.Get (0), nodes.Get (2), port++,
                     bandwidth, pktSize, start, end);
     }
    

@@ -59,7 +59,8 @@
 #include <algorithm>
 
 
-#define LOGTIMER 10 //sglee
+#define RTTLOGTIMER 100  //ms, sglee
+#define THROLOGTIMER 1000 //ms, sglee
 
 namespace ns3 {
 
@@ -364,9 +365,15 @@ TcpSocketBase::TcpSocketBase (const TcpSocketBase& sock)
     m_txTrace (sock.m_txTrace),
     m_rxTrace (sock.m_rxTrace),
     m_pacingTimer (Timer::REMOVE_ON_DESTROY),
-    m_printRttTimer(ns3::Seconds(0)), //sglee
-    m_sendNum(0), //sglee
-    m_retransNum(0) //sglee
+    //sglee~
+    m_printRttTimer(ns3::Seconds(0)), 
+    m_sendNum(0), 
+    m_retransNum(0),
+    m_rttLog(0),
+    m_printThroTimer(ns3::Seconds(0)),
+    m_recvDataBytes(0),
+    m_recvAllBytes(0)
+    //~sglee
 {
   NS_LOG_FUNCTION (this);
   NS_LOG_LOGIC ("Invoked the copy constructor");
@@ -1626,17 +1633,33 @@ TcpSocketBase::ReceivedAck (Ptr<Packet> packet, const TcpHeader& tcpHeader)
   SendPendingData (m_connected);
 
   //sglee~
-  if(m_printRttTimer + ns3::Seconds(LOGTIMER) < ns3::Simulator::Now())
+  double delay = 0;
+  SequenceNumber32 seqNumber = ackNumber-m_tcb->m_segmentSize; //assume that tcp does not using delayed ack.(per packet ack)
+  
+  for (std::deque<RttHistory>::iterator i = m_historyForLog.begin (); i != m_historyForLog.end (); ++i)
   {
-    NS_LOG_INFO("Node ID : "<<m_node->GetId()<<"\tTime : "<<ns3::Simulator::Now().ToDouble(ns3::Time::S)<<"\tAvg TCP RTT : "<<m_rtt->GetEstimate().ToDouble(ns3::Time::S)-0.05<<"\tLoss Ratio : "<<(double)m_retransNum/m_sendNum); //for one-way delay.... if propagation delay 50ms...
-    std::cout<<"Node ID : "<<m_node->GetId()<<"\tTime : "<<ns3::Simulator::Now().ToDouble(ns3::Time::S)<<"\tAvg TCP RTT : "<<m_rtt->GetEstimate().ToDouble(ns3::Time::S)-0.05<<"\tLoss Ratio : "<<(double)m_retransNum/m_sendNum<<std::endl; //for one-way delay.... if propagation delay 50ms...
+    if (seqNumber == i->seq)
+    { // Found it
+      if(!i->retx)
+      {
+        delay = (ns3::Simulator::Now()-i->time).ToDouble(Time::MS);
+        m_rttLog  = m_rttLog*0.7 + delay*0.3;
+      }
+      m_historyForLog.erase(i);
+    }
+  }
 
-    std::cout<<m_sendNum<<"\t"<<m_retransNum<<std::endl;
+  if(m_printRttTimer + ns3::MilliSeconds(RTTLOGTIMER) < ns3::Simulator::Now() && m_rttLog != 0)
+  {
+    NS_LOG_INFO(ns3::Simulator::Now().ToDouble(Time::S)<<"\tNode ID : "<<m_node->GetId()<<"\tAvg TCP RTT : "<<m_rttLog<<"\tInstant TCP RTT : "<<delay<<"\tLoss Ratio : "<<(double)m_retransNum/m_sendNum); 
+
     m_retransNum = 0;
     m_sendNum = 0;
 
-    m_printRttTimer += ns3::Seconds(LOGTIMER);
-
+    if(ns3::Simulator::Now() - m_printRttTimer >= 2*ns3::MilliSeconds(RTTLOGTIMER))
+      m_printRttTimer = ns3::MilliSeconds(RTTLOGTIMER*uint32_t(ns3::Simulator::Now().GetMilliSeconds()/RTTLOGTIMER));
+    else
+      m_printRttTimer += ns3::MilliSeconds(RTTLOGTIMER);
   }
   //~sglee
 }
@@ -2777,8 +2800,11 @@ TcpSocketBase::SendDataPacket (SequenceNumber32 seq, uint32_t maxSize, bool with
       Simulator::ScheduleNow (&TcpSocketBase::NotifyDataSent, this,
                               (seq + sz - m_tcb->m_highTxMark.Get ()));
     }
+
+
   // Update highTxMark
   m_tcb->m_highTxMark = std::max (seq + sz, m_tcb->m_highTxMark.Get ());
+
   return sz;
 }
 
@@ -2805,6 +2831,27 @@ TcpSocketBase::UpdateRttHistory (const SequenceNumber32 &seq, uint32_t sz,
             }
         }
     }
+
+  //sglee~
+  // update the history of sequence numbers used to calculate the RTT
+  if (isRetransmission == false)
+    { // This is the next expected one, just log at end
+      m_historyForLog.push_back (RttHistory (seq, sz, Simulator::Now ()));
+    }
+  else
+    { // This is a retransmit, find in list and mark as re-tx
+      for (std::deque<RttHistory>::iterator i = m_historyForLog.begin (); i != m_historyForLog.end (); ++i)
+        {
+          if ((seq >= i->seq) && (seq < (i->seq + SequenceNumber32 (i->count))))
+            { // Found it
+              i->retx = true;
+              i->count = ((seq + SequenceNumber32 (sz)) - i->seq); // And update count in hist
+              m_retransNum++;
+              break;
+            }
+        }
+    }
+  //~sglee
 }
 
 // Note that this function did not implement the PSH flag
@@ -3050,8 +3097,27 @@ TcpSocketBase::ReceivedData (Ptr<Packet> p, const TcpHeader& tcpHeader)
   if (!m_rxBuffer->Add (p, tcpHeader))
     { // Insert failed: No data or RX buffer full
       SendEmptyPacket (TcpHeader::ACK);
+      m_recvAllBytes += p->GetSize(); //sglee
       return;
     }
+  
+  //sglee~
+  m_recvDataBytes += p->GetSize();
+  m_recvAllBytes += p->GetSize();
+  if(m_printThroTimer + ns3::MilliSeconds(THROLOGTIMER) < ns3::Simulator::Now())
+  {
+    NS_LOG_INFO(ns3::Simulator::Now().ToDouble(Time::S)<<"\tNode ID : "<<m_node->GetId()<<"\tTCP Goodput : "<<(double)m_recvDataBytes*8*1000/(THROLOGTIMER*1000*1000) <<"\tTCP Throughput : "<<(double)m_recvAllBytes*8*1000/(THROLOGTIMER*1000*1000)); 
+
+    m_recvDataBytes = 0;
+    m_recvAllBytes = 0;
+
+    if(ns3::Simulator::Now() - m_printThroTimer >= 2*ns3::MilliSeconds(THROLOGTIMER))
+      m_printThroTimer = ns3::MilliSeconds(THROLOGTIMER*uint32_t(ns3::Simulator::Now().GetMilliSeconds()/THROLOGTIMER));
+    else
+      m_printThroTimer += ns3::MilliSeconds(THROLOGTIMER);
+  }
+  //~sglee
+  
   // Notify app to receive if necessary
   if (expectedSeq < m_rxBuffer->NextRxSequence ())
     { // NextRxSeq advanced, we have something to send to the app
@@ -3403,8 +3469,7 @@ TcpSocketBase::DoRetransmit ()
   bool res;
   SequenceNumber32 seq;
 
-  m_retransNum++; //sglee
-
+   
   // Find the first segment marked as lost and not retransmitted. With Reno,
   // that should be the head
   res = m_txBuffer->NextSeg (&seq, false);
