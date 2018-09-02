@@ -36,6 +36,8 @@
 #include "rtt-estimator.h"
 #include "tcp-l4-protocol.h"
 
+#include <map> //sglee
+
 namespace ns3 {
 
 class Ipv4EndPoint;
@@ -1175,6 +1177,7 @@ protected:
   // History of RTT
   std::deque<RttHistory>      m_history;         //!< List of sent packet
 
+
   // Connections to other layers of TCP/IP
   Ipv4EndPoint*       m_endPoint  {nullptr}; //!< the IPv4 endpoint
   Ipv6EndPoint*       m_endPoint6 {nullptr}; //!< the IPv6 endpoint
@@ -1241,10 +1244,19 @@ protected:
   // Pacing related variable
   Timer m_pacingTimer {Timer::REMOVE_ON_DESTROY}; //!< Pacing Event
 
-  ns3::Time m_printRttTimer;//sglee
-  uint32_t m_sendNum; //sglee
-  uint32_t m_retransNum; //sglee
-
+  //sglee~
+  ns3::Time m_printRttTimer;
+  uint32_t m_sendNum; 
+  uint32_t m_retransNum; 
+  
+  std::deque<RttHistory> m_historyForLog;
+  double m_rttLog;
+  
+  ns3::Time m_printThroTimer;
+  uint32_t m_recvDataBytes; 
+  uint32_t m_recvAllBytes; 
+  //~sglee
+  
   /**
    * \brief Inflated congestion window trace (not used in the real code, deprecated)
    */

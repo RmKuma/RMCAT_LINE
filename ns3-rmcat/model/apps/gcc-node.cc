@@ -31,6 +31,7 @@
 #include "ns3/simulator.h"
 #include "ns3/uinteger.h"
 #include "ns3/log.h"
+#include "ns3/node.h"
 
 #include <sys/stat.h>
 
@@ -287,7 +288,7 @@ void GccNode::EnqueuePacket ()
         enq_ssrc = *it;
       }
 
-      if(m_enqBytes[enq_ssrc] >= m_maxSize[enq_ssrc])
+      if(m_enqBytes[enq_ssrc]/1000 >= m_maxSize[enq_ssrc])
       {
         m_nextEnqSsrcIndex++;
         if(m_nextEnqSsrcIndex == m_srcSsrcSet.size()+1)
@@ -354,7 +355,7 @@ void GccNode::SendPacket (uint64_t msSlept)
 
       if(m_rateShapingBuf[send_ssrc].size() == 0)
       {
-        if(m_enqBytes[send_ssrc] >= m_maxSize[send_ssrc] && m_byeSet.find(send_ssrc) == m_byeSet.end())
+        if(m_enqBytes[send_ssrc]/1000 >= m_maxSize[send_ssrc] && m_byeSet.find(send_ssrc) == m_byeSet.end())
         {
           m_byeSet.insert(send_ssrc);
         }
@@ -625,18 +626,11 @@ void GccNode::RecvPacket (Ptr<Socket> socket)
     Packet->Print(stream);
     std::string p_str = str.str();
 
+    RtcpHeader header{};
+    Packet->Copy()->RemoveHeader(header);
+
     uint32_t pt;
-    if(p_str.find("RtpHeader") != std::string::npos) 
-      pt = 96; 
-    else if(p_str.find("GccRtcpHeader") != std::string::npos)
-      pt = GccRtcpHeader::RTCP_SR;
-    else if(p_str.find("RembHeader") != std::string::npos)
-      pt = RembHeader::RTP_REMB;
-    else
-    {
-      NS_LOG_ERROR("GccNode::RecvPacket, Invalid Packet Type");
-      exit(1);
-    }
+    pt = header.GetPacketType();
 
     switch(pt)
     {
@@ -696,7 +690,7 @@ void GccNode::RecvDataPacket(Ptr<Packet> p, Address remoteAddr)
 
     if(ns3::MilliSeconds(nowMs) > m_lastThroCheckTime + ns3::MilliSeconds(THROCHECKINTERVAL))
     {
-      NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<"\tGoodput : "<<m_recvDataBytes*8*1000/((double)THROCHECKINTERVAL*1000*1000)<<"\tThroughput : "<<m_recvAllBytes*8*1000/((double)THROCHECKINTERVAL*1000*1000));
+      NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<"\tNode ID : "<<GetNode()->GetId()<< "\tGCC Goodput : "<<m_recvDataBytes*8*1000/((double)THROCHECKINTERVAL*1000*1000)<<"\tGCC Throughput : "<<m_recvAllBytes*8*1000/((double)THROCHECKINTERVAL*1000*1000));
       m_lastThroCheckTime = m_lastThroCheckTime + ns3::MilliSeconds(THROCHECKINTERVAL);
       m_recvDataBytes = 0;
       m_recvAllBytes = 0;
@@ -704,7 +698,7 @@ void GccNode::RecvDataPacket(Ptr<Packet> p, Address remoteAddr)
 
     if(ns3::MilliSeconds(nowMs) > m_lastDelayCheckTime + ns3::MilliSeconds(DELAYCHECKINTERVAL))
     {
-      NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<"\tavg pDelay : "<<m_pDelay<<"\tinstant pDelay : "<<delay);
+      NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<"\tNode ID : "<<GetNode()->GetId()<< "\tGCC Avg pDelay : "<<m_pDelay<<"\tGCC Avg pDelay : "<<delay);
       m_lastDelayCheckTime = m_lastDelayCheckTime + ns3::MilliSeconds(DELAYCHECKINTERVAL);
     }
     
