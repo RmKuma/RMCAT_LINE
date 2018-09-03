@@ -87,7 +87,7 @@ GccRecvController::GccRecvController() :
     
     k_up_(0.0087),
     k_down_(0.039),
-    overusing_time_threshold_(10),
+   overusing_time_threshold_(100),
     threshold_(12.5),
     last_threshold_update_ms_(-1),
     time_over_using_(-1),
@@ -331,7 +331,7 @@ void GccRecvController::UpdateDelayBasedBitrate(uint64_t nowMs,
         NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::UpdateDelayBasedBitrate Recv Rate : " << incoming_bitrate_.Rate(nowMs)) ;
         
         
-		UpdateEstimator(i_arrival_, i_departure_, group_size_interval_*8, nowMs);
+		UpdateEstimator(i_arrival_, i_departure_, group_size_interval_, nowMs);
 		OveruseDetect(i_departure_, nowMs);
 		estimated_SendingBps_ = UpdateBitrate( Hypothesis_, incoming_bitrate_.Rate(nowMs), nowMs);
 
