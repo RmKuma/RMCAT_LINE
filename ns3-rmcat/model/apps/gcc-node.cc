@@ -36,7 +36,7 @@
 #include <sys/stat.h>
 
 NS_LOG_COMPONENT_DEFINE ("GccNode");
-#define INITRATE 500000 //1Mbps
+#define INITRATE 1000000 //1Mbps
 #define VIDEOINTERVAL 1000 //1s == 1000ms
 #define AUDIOINTERVAL 5000 //5s == 5000ms
 #define REMBINTERVAL 1000 //1s == 1000ms
@@ -649,7 +649,10 @@ void GccNode::RecvPacket (Ptr<Socket> socket)
         exit(1);
     }
 
-   // m_rSend = m_senderController->getBitrate();
+    m_rSend = m_senderController->getBitrate();
+    if(m_rSend == 0)
+      m_rSend = INITRATE;
+    NS_LOG_INFO(GetNode()->GetId()<<" Set Rate : "<<m_rSend);
 }
 
 void GccNode::RecvDataPacket(Ptr<Packet> p, Address remoteAddr)
@@ -775,9 +778,10 @@ void GccNode::RecvRembPacket(Ptr<Packet> p, Address remoteAddr)
     RembHeader header{};
     NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRembPacket, " << p->ToString ());
     p->RemoveHeader (header);
-
     RembHeader::RembBlock remb = header.GetRembBlock();
-    //gcc feedback..
+
+    m_senderController->ApplyReceiverEstimatedBitrate(remb.m_bitrate);
+    NS_LOG_INFO(GetNode()->GetId()<<" Recv Remb Rate : "<<remb.m_bitrate);
 }
 
 
