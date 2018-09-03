@@ -8,11 +8,10 @@
  *  be found in the AUTHORS file in the root of the source tree.
  */
 
-#include "rtc_base/rate_statistics.h"
+#include "rate_statistics.h"
 
 #include <algorithm>
 
-#include "rtc_base/checks.h"
 
 namespace webrtc {
 
@@ -25,6 +24,8 @@ RateStatistics::RateStatistics(int64_t window_size_ms, float scale)
       scale_(scale),
       max_window_size_ms_(window_size_ms),
       current_window_size_ms_(max_window_size_ms_) {}
+
+RateStatistics::RateStatistics(RateStatistics&& other) = default;
 
 RateStatistics::~RateStatistics() {}
 
@@ -51,7 +52,6 @@ void RateStatistics::Update(size_t count, int64_t now_ms) {
     oldest_time_ = now_ms;
 
   uint32_t now_offset = static_cast<uint32_t>(now_ms - oldest_time_);
-  RTC_DCHECK_LT(now_offset, max_window_size_ms_);
   uint32_t index = oldest_index_ + now_offset;
   if (index >= max_window_size_ms_)
     index -= max_window_size_ms_;
@@ -61,7 +61,7 @@ void RateStatistics::Update(size_t count, int64_t now_ms) {
   ++num_samples_;
 }
 
-absl::optional<uint32_t> RateStatistics::Rate(int64_t now_ms) const {
+uint32_t RateStatistics::Rate(int64_t now_ms) const {
   // Yeah, this const_cast ain't pretty, but the alternative is to declare most
   // of the members as mutable...
   const_cast<RateStatistics*>(this)->EraseOld(now_ms);
@@ -71,7 +71,7 @@ absl::optional<uint32_t> RateStatistics::Rate(int64_t now_ms) const {
   int64_t active_window_size = now_ms - oldest_time_ + 1;
   if (num_samples_ == 0 || active_window_size <= 1 ||
       (num_samples_ <= 1 && active_window_size < current_window_size_ms_)) {
-    return absl::nullopt;
+    return 0;
   }
 
   float scale = scale_ / active_window_size;
@@ -92,8 +92,6 @@ void RateStatistics::EraseOld(int64_t now_ms) {
   // Loop over buckets and remove too old data points.
   while (num_samples_ > 0 && oldest_time_ < new_oldest_time) {
     const Bucket& oldest_bucket = buckets_[oldest_index_];
-    RTC_DCHECK_GE(accumulated_count_, oldest_bucket.sum);
-    RTC_DCHECK_GE(num_samples_, oldest_bucket.samples);
     accumulated_count_ -= oldest_bucket.sum;
     num_samples_ -= oldest_bucket.samples;
     buckets_[oldest_index_] = Bucket();

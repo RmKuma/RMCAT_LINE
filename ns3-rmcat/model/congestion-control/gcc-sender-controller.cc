@@ -25,6 +25,8 @@
 #include "gcc-sender-controller.h"
 #include "ns3/log.h"
 #include "ns3/simulator.h"
+#include "ns3/node.h"
+#include "ns3/object.h"
 
 NS_LOG_COMPONENT_DEFINE("GccSenderController");
 
@@ -107,7 +109,7 @@ uint32_t GccSenderController::getBitrate() {
 }
 
 void GccSenderController::processBye(uint32_t ssrc){
-    last_report_blocks_[ssrc] = NULL;
+    last_report_blocks_.erase(ssrc);
 }
 
 void GccSenderController::SetSendBitrate(int bitrate) {
@@ -144,6 +146,8 @@ void GccSenderController::ApplyReceiverEstimatedBitrate(uint32_t Received_Estima
     }
    
     remb_bitrate_ = Received_Estimated_Bitrate;
+    NS_LOG_INFO( ns3::Simulator::Now().ToDouble(ns3::Time::S) << " GccSenderController::ApplyReceiverEstimatedBitrate::remb bitrate :  " << remb_bitrate_);    
+  
     CapBitrate(current_bitrate_bps_);
 }
 
@@ -191,6 +195,8 @@ void GccSenderController::OnReceivedRtcpReceiverReportBlocks(const std::vector<n
     if (packets_received_delta < 1)                                                
         return;                                                                      
     
+    NS_LOG_INFO( ns3::Simulator::Now().ToDouble(ns3::Time::S) << " lost packets : " << total_packets_lost_delta << " , totla packets : " << total_packets_delta);    
+ 
     UpdatePacketsLost(total_packets_lost_delta, total_packets_lost_delta + packets_received_delta, nowMs);      
 
 }
@@ -311,6 +317,7 @@ void GccSenderController::UpdateEstimate(int64_t nowMs){
 			last_timeout_ms_ = now_ms;                                                
 		}                                                                           
 	} */                                                                            
+    NS_LOG_INFO( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccSenderController::UpdateEstimated::loss based bitrate : " << new_bitrate);
 
 	CapBitrate(new_bitrate);                                      
 }

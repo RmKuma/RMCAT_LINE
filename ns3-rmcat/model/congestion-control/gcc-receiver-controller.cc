@@ -24,7 +24,12 @@
 #include "gcc-receiver-controller.h"
 #include <sstream>
 #include <cassert>
+#include "ns3/log.h"
+#include "ns3/simulator.h"
+
 #define BURST_TIME 5
+
+NS_LOG_COMPONENT_DEFINE("GccReceiverController");
 
 namespace rmcat {
 
@@ -82,7 +87,7 @@ GccRecvController::GccRecvController() :
     
     k_up_(0.0087),
     k_down_(0.039),
-    overusing_time_threshold_(100),
+    overusing_time_threshold_(10),
     threshold_(12.5),
     last_threshold_update_ms_(-1),
     time_over_using_(-1),
@@ -101,8 +106,10 @@ GccRecvController::GccRecvController() :
     time_first_incoming_estimate_(-1),                                      
     bitrate_is_initialized_(false),                                         
     beta_(0.85f),                                     
-    rtt_(200) //Initial Rtt can change                                         
+    rtt_(200), //Initial Rtt can change                                         
 
+    incoming_bitrate_(1000, 8000), //1000 is kBitrateWindowMs which is defined bwe_defines.h in webrtc folder   
+    incoming_bitrate_initialized_(false)
     {
         E_[0][0] = 100;           
         E_[1][1] = 1e-1;          
@@ -132,7 +139,8 @@ void GccRecvController::reset() {
         
 }
 
-float GccRecvController::GetBitrate() {
+uint32_t GccRecvController::GetBitrate() {
+    NS_LOG_INFO("WOWW" << estimated_SendingBps_);
     return estimated_SendingBps_;
 }
 
@@ -149,7 +157,7 @@ void GccRecvController::UpdateGroupInfo(uint64_t nowMs, uint16_t sequence, uint6
 
     if(m_first_packet_) {
 	// First Packet... We need to initialize variable.
-        curr_group_num_ = 0;
+    curr_group_num_ = 0;
 	curr_group_sseq_ = sequence;
 	curr_group_stime_ = txTimestamp;
 	
@@ -192,7 +200,7 @@ void GccRecvController::UpdateGroupInfo(uint64_t nowMs, uint16_t sequence, uint6
 	    i_delay_var_ = i_arrival_ - i_departure_;
 
 	    // Save Current group information into prev_group_*.
-            prev_group_sseq_ = curr_group_sseq_;
+        prev_group_sseq_ = curr_group_sseq_;
 	    prev_group_stime_ = curr_group_stime_;
 	    prev_group_eseq_ = prev_pkt_seq_;
 	    prev_group_etime_arrival_ = prev_pkt_rxTime_;
@@ -260,7 +268,7 @@ void GccRecvController::UpdateGroupInfo(uint64_t nowMs, uint16_t sequence, uint6
 	    i_delay_var_ = i_arrival_ - i_departure_;
 
 	    // Save Current group information into prev_group_*.
-            prev_group_sseq_ = curr_group_sseq_;
+        prev_group_sseq_ = curr_group_sseq_;
 	    prev_group_stime_ = curr_group_stime_;
 	    prev_group_eseq_ = prev_pkt_seq_;
 	    prev_group_etime_arrival_ = prev_pkt_rxTime_;
@@ -297,6 +305,8 @@ void GccRecvController::UpdateDelayBasedBitrate(uint64_t nowMs,
     UpdateGroupInfo(nowMs, sequence, txTimestampMs, rxTimestampMs, packet_size);
     
     if(m_group_changed_){
+        NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::UpdateDelayBasedBitrate::GroupInfo : " << curr_group_num_ << " " << i_arrival_ << " " << i_departure_ << " " << i_delay_var_ << " " << group_size_interval_) ;
+        
         m_group_changed_ = false;
         /**
 	 * Produce Delay Based Estimation based on follow variables.
@@ -309,12 +319,24 @@ void GccRecvController::UpdateDelayBasedBitrate(uint64_t nowMs,
 	 */
 
 	// TODO
-	  uint32_t rxRecv_rate = 0;
-
-		UpdateEstimator(i_arrival_, i_departure_, group_size_interval_, nowMs);
+	    uint32_t incoming_bitrate = incoming_bitrate_.Rate(nowMs);
+        if(incoming_bitrate){
+            incoming_bitrate_initialized_ = true;
+        }else if(incoming_bitrate_initialized_){
+            incoming_bitrate_.Reset();
+            incoming_bitrate_initialized_ = false;
+        }
+        incoming_bitrate_.Update(packet_size, nowMs);
+		
+        NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::UpdateDelayBasedBitrate Recv Rate : " << incoming_bitrate_.Rate(nowMs)) ;
+        
+        
+		UpdateEstimator(i_arrival_, i_departure_, group_size_interval_*8, nowMs);
 		OveruseDetect(i_departure_, nowMs);
-		estimated_SendingBps_ = UpdateBitrate( Hypothesis_, rxRecv_rate, nowMs);
-    }
+		estimated_SendingBps_ = UpdateBitrate( Hypothesis_, incoming_bitrate_.Rate(nowMs), nowMs);
+
+        NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::UpdateDelayBasedBitrate SendingBps : " << estimated_SendingBps_) ;
+	}
 
 }
 
@@ -361,7 +383,7 @@ void GccRecvController::logStats(uint64_t nowMs) const {
 /* In "UpdateEstimator", Calculate offset by using KALMAN filter. WE CALL THIS FUNCTION FOR CALCULATE BITRATE */
 void GccRecvController::UpdateEstimator(int t_delta, double ts_delta, int size_delta, int nowMs){
     const double min_frame_period = UpdateMinFramePeriod(ts_delta);
-	const double t_ts_delta = t_delta - ts_delta;
+	const double t_ts_delta = i_delay_var_;
 	double fs_delta = size_delta;
 
 	++num_of_deltas_;
@@ -382,7 +404,7 @@ void GccRecvController::UpdateEstimator(int t_delta, double ts_delta, int size_d
     const double Eh[2] = {E_[0][0] * h[0] + E_[0][1] * h[1],
                           E_[1][0] * h[0] + E_[1][1] * h[1]};
 
-
+  
     const double residual = t_ts_delta - slope_ * h[0] - offset_;
     const bool in_stable_state =  (Hypothesis_ == 'N');
     const double max_residual = 3.0 * sqrt(var_noise_);
@@ -410,11 +432,12 @@ void GccRecvController::UpdateEstimator(int t_delta, double ts_delta, int size_d
     E_[1][0] = e00 * IKh[1][0] + E_[1][0] * IKh[1][1];
     E_[1][1] = e01 * IKh[1][0] + E_[1][1] * IKh[1][1];
 
+    NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::E :  " << E_[0][0] << " " << E_[0][1] << " " << E_[1][0] << " " << E_[1][1] << " h : " << h[0] << " " << h[1] << " t_ts_delta : " << t_ts_delta << " , slope : " << slope_ << " , var_noise : " << var_noise_ << ", K : " << K[0] << " " << K[1] << "offset_bofore : " << offset_ ) ;
     // The covariance matrix must be positive semi-definite.
     bool positive_semi_definite =
         E_[0][0] + E_[1][1] >= 0 &&
         E_[0][0] * E_[1][1] - E_[0][1] * E_[1][0] >= 0 && E_[0][0] >= 0;
-
+    NS_ASSERT(positive_semi_definite);
     slope_ = slope_ + K[0] * residual;
     prev_offset_ = offset_;
     offset_ = offset_ + K[1] * residual;
@@ -463,8 +486,15 @@ char GccRecvController::OveruseDetect(double ts_delta, int nowMs){
     if (num_of_deltas_ < 2) {
       return 'N';
     }
+   
+    NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::OveruseDetect Kalmann Values :  " << num_of_deltas_ << " " << offset_ << " ");
+
     const double T = std::min(num_of_deltas_,60) * offset_; // kMinNumDeltas = 60
+    NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::OveruseDetect T :  " << T << " , threshold_ : " << threshold_) ;
+
+
     if (T > threshold_) {
+      NS_LOG_INFO("WOW1");
       if (time_over_using_ == -1) {
         // Initialize the timer. Assume that we've been
         // over-using half of the time since the previous
@@ -476,7 +506,9 @@ char GccRecvController::OveruseDetect(double ts_delta, int nowMs){
       }   
       overuse_counter_++;
       if (time_over_using_ > overusing_time_threshold_ && overuse_counter_ > 1) {
+      NS_LOG_INFO("WOW2");
         if (offset_ >= prev_offset_) {
+          NS_LOG_INFO("WOW3");
           time_over_using_ = 0;
           overuse_counter_ = 0;
           Hypothesis_ = 'O'; //Overusing
@@ -493,6 +525,8 @@ char GccRecvController::OveruseDetect(double ts_delta, int nowMs){
     }
   
     UpdateThreshold(T, nowMs);
+    NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::OveruseDetect hypo : " << Hypothesis_) ;
+
 
     return Hypothesis_;
 }
@@ -600,14 +634,17 @@ uint32_t GccRecvController::ChangeBitrate(uint32_t new_bitrate_bps, char bw_stat
     case 'D': //Decrease mode                                                             
       // Set bit rate to something slightly lower than max                        
       // to get rid of any self-induced delay.                                    
+      NS_LOG_INFO("WOW4");
       new_bitrate_bps =                                                           
           static_cast<uint32_t>(beta_ * incoming_bitrate_bps + 0.5);              
       if (new_bitrate_bps > current_bitrate_bps_) {                               
         // Avoid increasing the rate when over-using.                             
         if (rate_control_region_ != 'M') {                              
           new_bitrate_bps = static_cast<uint32_t>(                                
-              beta_ * avg_max_bitrate_kbps_ * 1000 + 0.5f);                       
+              beta_ * avg_max_bitrate_kbps_ * 1000 + 0.5f);
+          NS_LOG_INFO("wow6 : " << avg_max_bitrate_kbps_ ) ;                       
         }                                                                         
+        NS_LOG_INFO(  "wow5 : " << new_bitrate_bps << " " << current_bitrate_bps_);
         new_bitrate_bps = std::min(new_bitrate_bps, current_bitrate_bps_);        
       }                                                                           
       ChangeRegion('N');

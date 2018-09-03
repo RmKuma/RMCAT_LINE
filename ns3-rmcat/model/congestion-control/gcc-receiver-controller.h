@@ -31,7 +31,7 @@
 #include <cmath>
 #include <cstdio>
 #include <string>
-
+#include <ns3/rate_statistics.h>
 
 namespace rmcat {
 
@@ -77,7 +77,7 @@ public:
     /**
      * Get Funtion of estimated_SendingBps_
      */
-    float GetBitrate();
+    uint32_t GetBitrate();
 
     bool IsOveruse();
 
@@ -87,7 +87,7 @@ private:
 
     void UpdateGroupInfo(uint64_t nowMs, uint16_t sequence, uint64_t txTimestamp, uint64_t rxTimestamp, uint64_t packet_size);
     
-    float estimated_SendingBps_;  /* Sending rate estimated by delay based controller. */
+    uint32_t estimated_SendingBps_;  /* Sending rate estimated by delay based controller. */
 
     uint64_t m_lastTimeCalcMs;
     bool m_lastTimeCalcValid;
@@ -186,7 +186,8 @@ private:
     float beta_;                            
     int64_t rtt_;                           
 
-
+    webrtc::RateStatistics incoming_bitrate_;
+    bool incoming_bitrate_initialized_;
 };
 
 }
