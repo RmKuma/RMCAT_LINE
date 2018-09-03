@@ -578,7 +578,7 @@ void GccNode::SendRemb()
   Ptr<Packet> packet = Create<Packet> ();
   packet->AddHeader (header);
 
-  NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::SendRemb, " << packet->ToString ());
+  NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" GccNode::SendRemb, " << packet->ToString ()<<" Bit Rate : "<<bitrate);
   m_socket->SendTo (packet, 0, InetSocketAddress{m_destIp, m_destPort});
 
   m_rembEvent = Simulator::Schedule (ns3::MilliSeconds(REMBINTERVAL), &GccNode::SendRemb, this); //REMB is sent per 1s (webRTC)
@@ -608,7 +608,6 @@ uint32_t GccNode::GetNextRtcpTime()
 /*Receive Methods*/
 void GccNode::RecvPacket (Ptr<Socket> socket)
 {
-
     Address remoteAddr;
     auto Packet = m_socket->RecvFrom (remoteAddr);
     NS_ASSERT (Packet);
@@ -676,6 +675,16 @@ void GccNode::RecvDataPacket(Ptr<Packet> p, Address remoteAddr)
     
     m_lost[recvSsrc] += seq - (m_recvSeq[recvSsrc]+1);
     m_cumLost[recvSsrc] += m_lost[recvSsrc];
+    if(m_cumLost[recvSsrc] > uint32_t(0xffffff))
+    {
+      m_cumLost[recvSsrc] -= uint32_t(0xffffff);
+      if(m_cumLost[recvSsrc] > uint32_t(0xffffff))
+      {
+        NS_LOG_ERROR("Pakcet lost is too many.(Malfunction)");
+        exit(1);
+      }
+    }
+
     m_recvPackets[recvSsrc]++;
     m_recvSeq[recvSsrc] = seq;
 
@@ -684,6 +693,14 @@ void GccNode::RecvDataPacket(Ptr<Packet> p, Address remoteAddr)
     NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvDataPacket, Lost : "<<m_lost[recvSsrc]<<", cumLost : "<<m_cumLost[recvSsrc]<<", recvPackets : "<<m_recvPackets[recvSsrc]++);
 
     m_receiving = true;
+
+    if(m_recvController->IsOveruse())
+    {
+      if(m_rembEvent.IsRunning())
+        Simulator::Cancel(m_rembEvent);
+
+      m_rembEvent = Simulator::ScheduleNow(&GccNode::SendRemb, this);
+    }
 
     //Print Log
     uint32_t delay = uint32_t(nowMs)-header.GetTimestamp();
