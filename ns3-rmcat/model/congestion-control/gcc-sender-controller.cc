@@ -107,6 +107,7 @@ uint32_t GccSenderController::getBitrate() {
 }
 
 void GccSenderController::processBye(uint32_t ssrc){
+    last_report_blocks_[ssrc] = NULL;
 }
 
 void GccSenderController::SetSendBitrate(int bitrate) {
