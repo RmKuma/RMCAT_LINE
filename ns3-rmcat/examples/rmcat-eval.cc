@@ -59,57 +59,6 @@ const uint32_t TOPO_DEFAULT_QDELAY =     300;    // in ms:  300ms
 
 using namespace ns3;
 
-static NodeContainer BuildExampleTopo (uint64_t bps,
-                                       uint32_t msDelay,
-                                       uint32_t msQdelay)
-{
-    NodeContainer nodes;
-    nodes.Create(4);
-
-    NodeContainer n0n1;
-    n0n1.Add (nodes.Get(0));
-    n0n1.Add (nodes.Get(1));
- 
-    NodeContainer n1n2;
-    n1n2.Add (nodes.Get (1));
-    n1n2.Add (nodes.Get (2));
-    
-    NodeContainer n2n3;
-    n2n3.Add (nodes.Get (2));
-    n2n3.Add (nodes.Get (3));
-    
-    PointToPointHelper p2p;
-    p2p.SetDeviceAttribute ("DataRate", DataRateValue  (DataRate (bps)));
-    p2p.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (msDelay)));
-    auto bufSize = std::max<uint32_t> (DEFAULT_PACKET_SIZE, bps * msQdelay / 8000);
-    p2p.SetQueue ("ns3::DropTailQueue",
-                           "Mode", StringValue ("QUEUE_MODE_BYTES"),
-                           "MaxBytes", UintegerValue (bufSize));
-  
-    NetDeviceContainer dev0 = p2p.Install (n0n1);
-    NetDeviceContainer dev1 = p2p.Install (n1n2);
-    NetDeviceContainer dev2 = p2p.Install (n2n3);
-    
-    InternetStackHelper internet;
-    internet.InstallAll ();
-    Ipv4AddressHelper ipv4;
-    ipv4.SetBase ("10.1.1.0", "255.255.255.0");
-    ipv4.Assign (dev0);
-    ipv4.SetBase ("10.1.2.0", "255.255.255.0");
-    ipv4.Assign (dev1);
-    ipv4.SetBase ("10.1.3.0", "255.255.255.0");
-    ipv4.Assign (dev2);
-    Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
-    
-    // disable tc for now, some bug in ns3 causes extra delay
-    TrafficControlHelper tch;
-    tch.Uninstall (dev0);
-    tch.Uninstall (dev1);
-    tch.Uninstall (dev2);
-    
-    return nodes;
-}
-
 static void InstallTCP (Ptr<Node> sender,
                         Ptr<Node> receiver,
                         uint16_t port,
@@ -138,50 +87,14 @@ static void InstallTCP (Ptr<Node> sender,
 
 }
 
-static Time GetIntervalFromBitrate (uint64_t bitrate, uint32_t packetSize)
-{
-    if (bitrate == 0u) {
-        return Time::Max ();
-    }
-    const auto secs = static_cast<double> (packetSize + IPV4_UDP_OVERHEAD) /
-                            (static_cast<double> (bitrate) / 8. );
-    return Seconds (secs);
-}
-
-static void InstallUDP (Ptr<Node> sender,
-                        Ptr<Node> receiver,
-                        uint16_t serverPort,
-                        uint64_t bitrate,
-                        uint32_t packetSize,
-                        uint32_t startTime,
-                        uint32_t stopTime)
-{
-    // configure UDP source/sender/client
-    auto serverAddr = receiver->GetObject<Ipv4> ()->GetAddress (1,0).GetLocal ();
-    const auto interPacketInterval = GetIntervalFromBitrate (bitrate, packetSize);
-    uint32_t maxPacketCount = 0XFFFFFFFF;
-    UdpClientHelper client{serverAddr, serverPort};
-    client.SetAttribute ("MaxPackets", UintegerValue (maxPacketCount));
-    client.SetAttribute ("Interval", TimeValue (interPacketInterval));
-    client.SetAttribute ("PacketSize", UintegerValue (packetSize));
-
-    auto clientApps = client.Install (sender);
-    clientApps.Start (Seconds (startTime));
-    clientApps.Stop (Seconds (stopTime));
-
-    // configure TCP sink/receiver/server
-    UdpServerHelper server{serverPort};
-    auto serverApps = server.Install (receiver);
-    serverApps.Start (Seconds (startTime));
-    serverApps.Stop (Seconds (stopTime));
-}
-
 static void InstallGccApps (Ptr<Node> node_1,
                          Ptr<Node> node_2,
                          uint16_t port_1,
                          uint16_t port_2,
                          float startTime,
-                         float stopTime)
+                         float stopTime,
+                         uint32_t numStream,
+                         bool biDirec)
 {
     Ptr<GccNode> app_1 = CreateObject<GccNode> ();
     Ptr<GccNode> app_2 = CreateObject<GccNode> ();
@@ -190,7 +103,11 @@ static void InstallGccApps (Ptr<Node> node_1,
     node_2->AddApplication (app_2);
  
     app_1->SetUp (port_1,1000000); 
-    app_2->SetUp (port_2,0); 
+    
+    if(biDirec)
+      app_2->SetUp (port_2,1000000); 
+    else
+      app_2->SetUp (port_2,0); 
     
     Ptr<Ipv4> ipv4_1 = node_1->GetObject<Ipv4> ();
     Ptr<Ipv4> ipv4_2 = node_2->GetObject<Ipv4> ();
@@ -201,8 +118,19 @@ static void InstallGccApps (Ptr<Node> node_1,
     app_1->SetDest(ipAdd_2, port_2);
     app_2->SetDest(ipAdd_1, port_1);
 
-    //app_1->AddMulStream(4, 0);
-    //app_2->AddMulStream(4, 0);
+    uint64_t* streamSize = (uint64_t*)malloc(numStream*sizeof(uint64_t));
+
+    for(uint32_t i=0;i<numStream;i++)
+    {
+      streamSize[i] = 1000000;
+    }
+
+    app_1->AddMulStream(numStream, streamSize);
+    
+    if(biDirec)
+      app_2->AddMulStream(numStream, streamSize);
+    else
+      app_2->AddMulStream(0, NULL);
     
     const auto fps = 30.;		// Set Video Fps.
     auto innerCodec_1 = new syncodecs::StatisticsCodec{fps};
@@ -222,18 +150,24 @@ static void InstallGccApps (Ptr<Node> node_1,
 int main (int argc, char *argv[])
 {
     // Number of Flows 
-    int nRmcat = 2;
+    int nRmcat = 1;
+    std::string mode = "gcc";
     int nTcp = 0;
     int nUdp = 0;
+    bool biDirec = false;
+    float endTime = 500;
+    uint32_t numStream = 0;
+
     bool log = true;
-    std::string mode = "gcc";
     
     CommandLine cmd;
     cmd.AddValue ("rmcat", "Number of rmcat (GCC) flows", nRmcat);
+    cmd.AddValue ("mode", "nada/gcc/vcc", mode);   // Default is declared in rmcat-sender.cc
     cmd.AddValue ("tcp", "Number of TCP flows", nTcp);
     cmd.AddValue ("udp",  "Number of UDP flows", nUdp);
+    cmd.AddValue ("biDirec",  "Bi-Directional flow generation", biDirec);
+    cmd.AddValue ("numStream",  "The numer of streams of Gcc nodes", numStream);
     cmd.AddValue ("log", "Turn on logs", log);
-    cmd.AddValue ("mode", "nada/gcc/vcc", mode);   // Default is declared in rmcat-sender.cc
     cmd.Parse (argc, argv);
 
     if (log) {
@@ -251,44 +185,119 @@ int main (int argc, char *argv[])
 
     const uint64_t linkBw   = TOPO_DEFAULT_BW;
     const uint32_t msDelay  = TOPO_DEFAULT_PDELAY;
-    const uint32_t msQDelay = TOPO_DEFAULT_QDELAY;
+    const uint32_t msQdelay = TOPO_DEFAULT_QDELAY;
 
-    const float minBw =  GCC_DEFAULT_RMIN;
-    const float maxBw =  GCC_DEFAULT_RMAX;
-    const float initBw = GCC_DEFAULT_RINIT;
+    NodeContainer nodes;
+    nodes.Create(2);
 
-    const float endTime = 500.;
-
-    NodeContainer nodes = BuildExampleTopo (linkBw, msDelay, msQDelay);
-
+    PointToPointHelper p2p;
+    p2p.SetDeviceAttribute ("DataRate", DataRateValue  (DataRate (linkBw)));
+    p2p.SetChannelAttribute ("Delay", TimeValue (MilliSeconds (msDelay)));
+    auto bufSize = std::max<uint32_t> (DEFAULT_PACKET_SIZE, linkBw * msQdelay / 8000);
+    p2p.SetQueue ("ns3::DropTailQueue",
+                           "Mode", StringValue ("QUEUE_MODE_BYTES"),
+                           "MaxBytes", UintegerValue (bufSize));
+  
+    NetDeviceContainer dev0 = p2p.Install (nodes);
+    
+    InternetStackHelper internet;
+    internet.Install(nodes);
+    
+    Ipv4AddressHelper ipv4;
+    ipv4.SetBase ("10.1.0.0", "255.255.255.0");
+    ipv4.Assign (dev0);
+    
+    // disable tc for now, some bug in ns3 causes extra delay
+    TrafficControlHelper tch;
+    tch.Uninstall (dev0);
+    
     int port = 8000;
+
     for (int i = 0; i < nRmcat; i++) {
-        auto start = 10. * i;
+        auto start = 10.*i;
         auto end = std::max (start + 1., endTime - start);
 
         uint16_t port_1 = port++;
         uint16_t port_2 = port++;
+
+        NodeContainer endNodes;
+        endNodes.Create(2);
+
+        NodeContainer srcToRouter;
+        srcToRouter.Add(endNodes.Get(0));
+        srcToRouter.Add(nodes.Get(0));
+
+        NodeContainer routerToRecv;
+        routerToRecv.Add(nodes.Get(1));
+        routerToRecv.Add(endNodes.Get(1));
+
+        NetDeviceContainer srcDev = p2p.Install(srcToRouter);
+        NetDeviceContainer recvDev = p2p.Install(routerToRecv);
+        
+        internet.Install(endNodes);
+
+        std::string srcIpBase;
+        srcIpBase = "10.1."+std::to_string(2*i+1)+".0";
+        ipv4.SetBase(srcIpBase.c_str(), "255.255.255.0"); 
+        ipv4.Assign(srcDev);
+
+        std::string recvIpBase;
+        recvIpBase = "10.1."+std::to_string(2*i+2)+".0";
+        ipv4.SetBase(recvIpBase.c_str(), "255.255.255.0"); 
+        ipv4.Assign(recvDev);
+        
+        tch.Uninstall(srcDev);
+        tch.Uninstall(recvDev);
+        
         if(mode == "gcc")
-          InstallGccApps (nodes.Get (0), nodes.Get (3), port_1, port_2, start, end);
+          InstallGccApps (endNodes.Get (0), endNodes.Get (1), port_1, port_2, start, end, numStream, biDirec);
     }
 
     for (int i = 0; i < nTcp; i++) {
         auto start = 17+ 17.*i;
         auto end = std::max (start + 1., endTime - start);
-        InstallTCP (nodes.Get (0), nodes.Get (3), port++, start, end);
-    }
+        uint16_t port_1 = port++;
 
-    // UDP parameters
-    const uint64_t bandwidth = GCC_DEFAULT_RMAX / 4;
-    const uint32_t pktSize = DEFAULT_PACKET_SIZE;
+        NodeContainer endNodes;
+        endNodes.Create(2);
 
-    for (int i = 0; i < nUdp; i++) {
-        auto start = 23+23. * i;
-        auto end = std::max (start + 1., endTime - start);
-        InstallUDP (nodes.Get (0), nodes.Get (3), port++,
-                    bandwidth, pktSize, start, end);
+        NodeContainer srcToRouter;
+        srcToRouter.Add(endNodes.Get(0));
+        srcToRouter.Add(nodes.Get(0));
+
+        NodeContainer routerToRecv;
+        routerToRecv.Add(nodes.Get(1));
+        routerToRecv.Add(endNodes.Get(1));
+
+        NetDeviceContainer srcDev = p2p.Install(srcToRouter);
+        NetDeviceContainer recvDev = p2p.Install(routerToRecv);
+        
+        internet.Install(endNodes);
+        
+        std::string srcIpBase;
+        srcIpBase = "10.1."+std::to_string(2*(nRmcat+i)+1)+".0";
+        ipv4.SetBase(srcIpBase.c_str(), "255.255.255.0"); 
+        ipv4.Assign(srcDev);
+
+        std::string recvIpBase;
+        recvIpBase = "10.1."+std::to_string(2*(nRmcat+i)+2)+".0";
+        ipv4.SetBase(recvIpBase.c_str(), "255.255.255.0"); 
+        ipv4.Assign(recvDev);
+        
+        tch.Uninstall(srcDev);
+        tch.Uninstall(recvDev);
+        
+        InstallTCP (endNodes.Get (0), endNodes.Get (1), port_1, start, end);
+
+        if(biDirec)
+        {
+          uint16_t port_2 = port++;
+          InstallTCP (endNodes.Get (1), endNodes.Get (0), port_2, start, end);
+        }
     }
-   
+    
+    Ipv4GlobalRoutingHelper::PopulateRoutingTables ();
+
     std::cout << "Running Simulation..." << std::endl;
     Simulator::Stop (Seconds (endTime));
     Simulator::Run ();
