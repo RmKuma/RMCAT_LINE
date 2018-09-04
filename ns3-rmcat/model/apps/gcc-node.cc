@@ -230,7 +230,7 @@ void GccNode::StartApplication ()
 
     m_enqueueEvent = Simulator::Schedule (Seconds (0.0), &GccNode::EnqueuePacket, this);
     m_rtcpEvent = Simulator::Schedule(ns3::MilliSeconds(GetNextRtcpTime()), &GccNode::CreateRtcp, this);
-    m_rembEvent = Simulator::Schedule (ns3::MilliSeconds(REMBINTERVAL), &GccNode::SendRemb, this); //REMB is sent per 1s (webRTC)
+//    m_rembEvent = Simulator::Schedule (ns3::MilliSeconds(REMBINTERVAL), &GccNode::SendRemb, this); //REMB is sent per 1s (webRTC)
 
     uint64_t nowMs = Simulator::Now().GetMilliSeconds();
     m_lastThroCheckTime = ns3::MilliSeconds(uint64_t(nowMs/THROCHECKINTERVAL) * THROCHECKINTERVAL);
@@ -690,7 +690,7 @@ void GccNode::RecvDataPacket(Ptr<Packet> p, Address remoteAddr)
 
     m_receiving = true;
 
-    if(m_recvController->IsOveruse())
+    if(m_recvController->IsOveruse() || !m_rembEvent.IsRunning())
     {
       if(m_rembEvent.IsRunning())
         Simulator::Cancel(m_rembEvent);
