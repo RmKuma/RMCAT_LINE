@@ -155,7 +155,17 @@ void GccSenderController::ApplyReceiverEstimatedBitrate(uint32_t Received_Estima
 void GccSenderController::ApplyLossBasedBitrate(const std::vector<ns3::GccRtcpHeader::RecvReportBlock>& report_blocks,
                                                 int64_t nowMs) {
     // TODO Loss Based Controller Implementation
-    
+    NS_LOG_INFO("m_Bitrate_valid_ : " << m_Bitrate_valid_);
+    if (!m_Bitrate_valid_){                                                                    
+         // First ApplyDelayBasedBitrate called.                                                
+         // We need to initialize m_sending_rate_ and min, max configured bitrate.              
+                                                                                                
+         m_Bitrate_valid_ = true;                                                               
+                                                                                                
+         SetMinMaxBitrate(kMinBitrateBps, kMaxBitrateBps);                                      
+         SetSendBitrate(kInitialBitrateBps);                                                    
+     }         
+                                                                                  
     OnReceivedRtcpReceiverReportBlocks(report_blocks, nowMs);
 	
     if (rttMs > 0 )
@@ -205,7 +215,7 @@ void GccSenderController::UpdatePacketsLost(int packets_lost, int number_of_pack
     last_feedback_ms_ = nowMs;                                              
     if (first_report_time_ms_ == -1)                                         
         first_report_time_ms_ = nowMs;                                        
-                                                                         
+    NS_LOG_INFO("SEND : " << first_report_time_ms_);                                               
     // Check sequence number diff and weight loss report                     
     if (number_of_packets > 0) {                                             
         // Accumulate reports.                                                 
@@ -240,11 +250,10 @@ bool GccSenderController::IsInStartPhase(int64_t nowMs) {
 void GccSenderController::UpdateEstimate(int64_t nowMs){
     uint32_t new_bitrate = current_bitrate_bps_;
 
-
     if(last_fraction_loss_ == 0 && IsInStartPhase(nowMs)) {
-
+		NS_LOG_INFO("SENDER new bitrate1 : " << new_bitrate << " " << remb_bitrate_ << " " << current_bitrate_bps_);
         new_bitrate = std::max(remb_bitrate_, new_bitrate);           
-                                                              
+		NS_LOG_INFO("SENDER new bitrate2 : " << new_bitrate << " " << remb_bitrate_ << " " << current_bitrate_bps_);
         if (new_bitrate != current_bitrate_bps_) {                    
             min_bitrate_history_.clear();                               
             min_bitrate_history_.push_back(std::make_pair(nowMs, current_bitrate_bps_));          
@@ -357,6 +366,7 @@ void GccSenderController::CapBitrate(uint32_t bitrate_bps){
     }
     
     current_bitrate_bps_ = bitrate_bps;
+    NS_LOG_INFO("RECV current_bitrate_bps " << current_bitrate_bps_);
 }
 
 
