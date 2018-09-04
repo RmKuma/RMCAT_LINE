@@ -755,7 +755,7 @@ void GccNode::RecvRtcp(Ptr<Packet> p, Address remoteAddr)
         
         m_lastSrRecvTime[rrb.m_sourceSsrc] = Simulator::Now().GetMilliSeconds();
       }
-      m_senderController->OnReceivedRtcpReceiverReportBlocks(rrbs, nowMs);
+      m_senderController->ApplyLossBasedBitrate(rrbs, nowMs);
     }
     
     if(!bye.m_ssrcSet.empty())
