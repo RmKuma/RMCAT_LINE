@@ -106,7 +106,7 @@ namespace rmcat {
 		time_first_incoming_estimate_(-1),                                      
 		bitrate_is_initialized_(false),                                         
 		beta_(0.85f),                                     
-		rtt_(500), //Initial Rtt can change                                         
+		rtt_(200), //Initial Rtt can change                                         
 
 		incoming_bitrate_(1000, 8000), //1000 is kBitrateWindowMs which is defined bwe_defines.h in webrtc folder   
 		incoming_bitrate_initialized_(false)
@@ -584,9 +584,9 @@ namespace rmcat {
 		double avg_packet_size_bits = bits_per_frame / packets_per_frame;              
 
 		// Approximate the over-use estimator delay to 100 ms.                         
-		const int64_t response_time = (rtt_ + 100) * 1;  // Or this value "rtt_ + 100" ... ;  
+		const int64_t response_time = (rtt_ + 100) * 2;  // Or this value "rtt_ + 100" ... ;  
 		const double kMinIncreaseRateBps = 4000;                                   
-		return static_cast<int>(std::max(                                              
+		return static_cast<int>(std::max(                                             
 					kMinIncreaseRateBps, (avg_packet_size_bits * 1000) / response_time));      
 	}                                                                                
 
