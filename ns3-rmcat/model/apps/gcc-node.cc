@@ -41,7 +41,7 @@ NS_LOG_COMPONENT_DEFINE ("GccNode");
 #define AUDIOINTERVAL 5000 //5s == 5000ms
 #define REMBINTERVAL 1000 //1s == 1000ms
 
-#define THROCHECKINTERVAL 1000 //1s == 1000ms
+#define THROCHECKINTERVAL 10000 //1s == 1000ms
 #define DELAYCHECKINTERVAL 100 //100ms
 
 namespace ns3 {
@@ -669,10 +669,11 @@ void GccNode::RecvDataPacket(Ptr<Packet> p, Address remoteAddr)
       m_recvSeq[recvSsrc] = seq-1;
     }
     
-    m_lost[recvSsrc] += seq - (m_recvSeq[recvSsrc]+1);
+    m_lost[recvSsrc] += uint16_t(seq - (m_recvSeq[recvSsrc]+1));
     m_cumLost[recvSsrc] += m_lost[recvSsrc];
     if(m_cumLost[recvSsrc] > uint32_t(0xffffff))
     {
+      NS_LOG_INFO("m_cumLost : "<<m_cumLost[recvSsrc]<<" "<<seq<<" "<<m_recvSeq[recvSsrc]<<" "<<m_lost[recvSsrc]);
       m_cumLost[recvSsrc] -= uint32_t(0xffffff);
       if(m_cumLost[recvSsrc] > uint32_t(0xffffff))
       {

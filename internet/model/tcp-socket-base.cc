@@ -18,9 +18,10 @@
  *
  * Author: Adrian Sai-wah Tam <adrian.sw.tam@gmail.com>
  */
-
+/* sglee
 #define NS_LOG_APPEND_CONTEXT \
   if (m_node) { std::clog << " [node " << m_node->GetId () << "] "; }
+*/
 
 #include "ns3/abort.h"
 #include "ns3/node.h"
@@ -60,7 +61,7 @@
 
 
 #define RTTLOGTIMER 100  //ms, sglee
-#define THROLOGTIMER 1000 //ms, sglee
+#define THROLOGTIMER 10000 //ms, sglee
 
 namespace ns3 {
 
@@ -3106,8 +3107,7 @@ TcpSocketBase::ReceivedData (Ptr<Packet> p, const TcpHeader& tcpHeader)
   m_recvAllBytes += p->GetSize();
   if(m_printThroTimer + ns3::MilliSeconds(THROLOGTIMER) < ns3::Simulator::Now())
   {
-    NS_LOG_INFO(ns3::Simulator::Now().ToDouble(Time::S)<<"\tNode ID : "<<m_node->GetId()<<"\tTCP Goodput : "<<(double)m_recvDataBytes*8*1000/(THROLOGTIMER*1000*1000) <<"\tTCP Throughput : "<<(double)m_recvAllBytes*8*1000/(THROLOGTIMER*1000*1000)); 
-
+    NS_LOG_INFO(ns3::Simulator::Now().ToDouble(Time::S)<<"\tNode ID : "<<m_node->GetId()<<"\tTCP Goodput : "<<(double)m_recvDataBytes*8/(1000*1000)/((double)THROLOGTIMER/1000) <<"\tTCP Throughput : "<<(double)m_recvAllBytes*8/(1000*1000)/((double)THROLOGTIMER/1000)); 
     m_recvDataBytes = 0;
     m_recvAllBytes = 0;
 

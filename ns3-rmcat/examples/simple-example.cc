@@ -213,7 +213,7 @@ static void InstallGccApps (Ptr<Node> node_1,
 int main (int argc, char *argv[])
 {
     // Number of Flows 
-    int nRmcat = 1;
+    int nRmcat = 2;
     int nTcp = 0;
     int nUdp = 0;
 

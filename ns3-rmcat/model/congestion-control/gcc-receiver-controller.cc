@@ -85,9 +85,9 @@ namespace rmcat {
 		var_noise_{50},
 		ts_delta_hist_{},
 
-		k_up_(0.0087),
-		k_down_(0.039),
-		overusing_time_threshold_(100),
+		k_up_(0.01),
+		k_down_(0.00018),
+		overusing_time_threshold_(10),
 		threshold_(12.5),
 		last_threshold_update_ms_(-1),
 		time_over_using_(-1),
