@@ -106,7 +106,7 @@ namespace rmcat {
 		time_first_incoming_estimate_(-1),                                      
 		bitrate_is_initialized_(false),                                         
 		beta_(0.85f),                                     
-		rtt_(200), //Initial Rtt can change                                         
+		rtt_(500), //Initial Rtt can change                                         
 
 		incoming_bitrate_(1000, 8000), //1000 is kBitrateWindowMs which is defined bwe_defines.h in webrtc folder   
 		incoming_bitrate_initialized_(false)
@@ -335,7 +335,7 @@ namespace rmcat {
 			NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::UpdateDelayBasedBitrate Recv Rate : " << incoming_bitrate_.Rate(nowMs)) ;
 
 
-			UpdateEstimator(i_arrival_, i_departure_, group_size_interval_, nowMs);
+			UpdateEstimator(i_arrival_, i_departure_, group_size_interval_ * 8, nowMs);
 			OveruseDetect(i_departure_, nowMs);
 			estimated_SendingBps_ = UpdateBitrate( Hypothesis_, incoming_bitrate_.Rate(nowMs), nowMs);
 
@@ -584,7 +584,7 @@ namespace rmcat {
 		double avg_packet_size_bits = bits_per_frame / packets_per_frame;              
 
 		// Approximate the over-use estimator delay to 100 ms.                         
-		const int64_t response_time = (rtt_ + 100) * 2;  // Or this value "rtt_ + 100" ... ;  
+		const int64_t response_time = (rtt_ + 100) * 1;  // Or this value "rtt_ + 100" ... ;  
 		const double kMinIncreaseRateBps = 4000;                                   
 		return static_cast<int>(std::max(                                              
 					kMinIncreaseRateBps, (avg_packet_size_bits * 1000) / response_time));      
