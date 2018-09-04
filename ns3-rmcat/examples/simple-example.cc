@@ -233,8 +233,8 @@ int main (int argc, char *argv[])
     if (log) {
         LogComponentEnable ("GccNode", LOG_LEVEL_ALL);
         LogComponentEnable ("GfpHeader", LOG_LEVEL_ALL);
-        //LogComponentEnable ("GccReceiverController", LOG_LEVEL_ALL);
-        //LogComponentEnable ("GccSenderController", LOG_LEVEL_ALL);
+        LogComponentEnable ("GccReceiverController", LOG_LEVEL_ALL);
+        LogComponentEnable ("GccSenderController", LOG_LEVEL_ALL);
         LogComponentEnable ("TcpSocketBase", LOG_LEVEL_ALL);
     }
 

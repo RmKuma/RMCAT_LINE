@@ -35,6 +35,7 @@ def build(bld):
         'model/topo/wifi-topo.cc',
         'model/congestion-control/gcc-sender-controller.cc',
         'model/congestion-control/gcc-receiver-controller.cc',
+        'model/congestion-control/rate_statistics.cc',
         ]
 
     module.defines = ['NS3_ASSERT_ENABLE', 'NS3_LOG_ENABLE']

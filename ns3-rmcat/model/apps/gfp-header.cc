@@ -494,7 +494,7 @@ void RembHeader::Serialize (Buffer::Iterator start) const
       NS_LOG_INFO("REMB Serial ssrc : "<<m_sendSsrc<<" " <<m_rembBlock.m_exp<<" "<<m_rembBlock.m_mantisa);
 
       uint8_t octet1 = uint8_t(m_rembBlock.m_exp<<2);
-      octet1 |= uint8_t(m_rembBlock.m_mantisa >> 14);
+      octet1 |= uint8_t(m_rembBlock.m_mantisa >> 16);
       start.WriteU8(octet1);
       start.WriteHtonU16 (uint16_t(m_rembBlock.m_mantisa & 0xffff));
 
@@ -520,7 +520,7 @@ uint32_t RembHeader::Deserialize (ns3::Buffer::Iterator start)
 
       uint8_t octet1 = start.ReadU8();
       m_rembBlock.m_exp = uint8_t(octet1>>2);
-      m_rembBlock.m_mantisa = uint32_t(octet1) << 18;
+      m_rembBlock.m_mantisa = (uint32_t(octet1)<<30) >> 14;
       m_rembBlock.m_mantisa |= (uint32_t(start.ReadNtohU16()) & 0xffff);
       
       NS_LOG_INFO("REMB Deserial ssrc : "<<m_sendSsrc<<" " <<m_rembBlock.m_exp<<" "<<m_rembBlock.m_mantisa);
