@@ -302,42 +302,42 @@ void GccRecvController::UpdateDelayBasedBitrate(uint64_t nowMs,
                                                 uint64_t rxTimestampMs,
                                                 uint64_t packet_size, 
                                                 uint8_t ecn){
-    UpdateGroupInfo(nowMs, sequence, txTimestampMs, rxTimestampMs, packet_size);
+  
+  UpdateGroupInfo(nowMs, sequence, txTimestampMs, rxTimestampMs, packet_size);
+  
+  if(m_group_changed_){
+    NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::UpdateDelayBasedBitrate::GroupInfo : " << curr_group_num_ << " " << i_arrival_ << " " << i_departure_ << " " << i_delay_var_ << " " << group_size_interval_) ;
     
-    if(m_group_changed_){
-        NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::UpdateDelayBasedBitrate::GroupInfo : " << curr_group_num_ << " " << i_arrival_ << " " << i_departure_ << " " << i_delay_var_ << " " << group_size_interval_) ;
-        
-        m_group_changed_ = false;
-        /**
-	 * Produce Delay Based Estimation based on follow variables.
-	 * 
-	 * i_arrival_ : inter arrival time of two adjacency group.
-	 * i_departure_ : inter departure time of two adjacency group.
-	 * i_delay_var_ : inter delay variance (inter arrival time - inter departure time) of two adjacency group.
-	 * group_size_interval_ : group size interval.
-	 *
-	 */
-
-	// TODO
-	    uint32_t incoming_bitrate = incoming_bitrate_.Rate(nowMs);
-        if(incoming_bitrate){
-            incoming_bitrate_initialized_ = true;
-        }else if(incoming_bitrate_initialized_){
-            incoming_bitrate_.Reset();
-            incoming_bitrate_initialized_ = false;
-        }
-        incoming_bitrate_.Update(packet_size, nowMs);
-		
-        NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::UpdateDelayBasedBitrate Recv Rate : " << incoming_bitrate_.Rate(nowMs)) ;
-        
-        
-		UpdateEstimator(i_arrival_, i_departure_, group_size_interval_, nowMs);
-		OveruseDetect(i_departure_, nowMs);
-		estimated_SendingBps_ = UpdateBitrate( Hypothesis_, incoming_bitrate_.Rate(nowMs), nowMs);
-
-        NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::UpdateDelayBasedBitrate SendingBps : " << estimated_SendingBps_) ;
-	}
-
+    m_group_changed_ = false;
+    /**
+     * Produce Delay Based Estimation based on follow variables.
+     * 
+     * i_arrival_ : inter arrival time of two adjacency group.
+     * i_departure_ : inter departure time of two adjacency group.
+     * i_delay_var_ : inter delay variance (inter arrival time - inter departure time) of two adjacency group.
+     * group_size_interval_ : group size interval.
+     *
+    */
+  
+    // TODO
+    uint32_t incoming_bitrate = incoming_bitrate_.Rate(nowMs);
+    if(incoming_bitrate){
+      incoming_bitrate_initialized_ = true;
+    }else if(incoming_bitrate_initialized_){
+      incoming_bitrate_.Reset();
+      incoming_bitrate_initialized_ = false;
+    }
+    incoming_bitrate_.Update(packet_size, nowMs);
+    
+    NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::UpdateDelayBasedBitrate Recv Rate : " << incoming_bitrate_.Rate(nowMs)) ;
+    
+    
+    UpdateEstimator(i_arrival_, i_departure_, group_size_interval_, nowMs);
+    OveruseDetect(i_departure_, nowMs);
+    estimated_SendingBps_ = UpdateBitrate( Hypothesis_, incoming_bitrate_.Rate(nowMs), nowMs);
+    
+    NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::UpdateDelayBasedBitrate SendingBps : " << estimated_SendingBps_) ;
+  }
 }
 
 /*
@@ -489,7 +489,7 @@ char GccRecvController::OveruseDetect(double ts_delta, int nowMs){
    
     NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::OveruseDetect Kalmann Values :  " << num_of_deltas_ << " " << offset_ << " ");
 
-    const double T = std::min(num_of_deltas_,60) * offset_; // kMinNumDeltas = 60
+    const double T = std::min(num_of_deltas_,10) * offset_; // kMinNumDeltas = 60
     NS_LOG_INFO ( ns3::Simulator::Now().ToDouble(ns3::Time::S) << "GccReceiverController::OveruseDetect T :  " << T << " , threshold_ : " << threshold_) ;
 
 

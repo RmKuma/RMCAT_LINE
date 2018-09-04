@@ -318,7 +318,7 @@ void GccNode::EnqueuePacket ()
     if(m_nextEnqSsrcIndex == m_srcSsrcSet.size()+1)
       m_nextEnqSsrcIndex = 0;
 
-    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::EnqueuePacket, packet enqueued, packet length: " << bytesToSend
+    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode::EnqueuePacket, packet enqueued, packet length: " << bytesToSend
                  << ", buffer size: " << m_rateShapingBuf[enq_ssrc].size ()
                  << ", buffer bytes: " << m_rateShapingBytes[enq_ssrc] << ", total enqueue bytes : "<<m_enqBytes[enq_ssrc]<<", Ssrc : "<<enq_ssrc);
 
@@ -374,7 +374,7 @@ void GccNode::SendPacket (uint64_t msSlept)
 
     if(!can_send)
     {
-      NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::SendPacket, All stream buffer is empty.");
+      NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode::SendPacket, All stream buffer is empty.");
       return;
     }
    
@@ -392,7 +392,7 @@ void GccNode::SendPacket (uint64_t msSlept)
     if(m_nextSendSsrcIndex == m_srcSsrcSet.size()+1)
       m_nextSendSsrcIndex = 0;
       
-    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::SendPacket, packet dequeued, packet length: " << bytesToSend
+    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode::SendPacket, packet dequeued, packet length: " << bytesToSend
                  << ", buffer size: " << m_rateShapingBuf[send_ssrc].size ()
                  << ", buffer bytes: " << m_rateShapingBytes[send_ssrc]
                  << ", Send Ssrc : "<<send_ssrc);
@@ -431,14 +431,14 @@ void GccNode::SendOverSleep (uint32_t bytesToSend, uint32_t send_ssrc)
     auto packet = Create<Packet> (bytesToSend);
     packet->AddHeader (header);
 
-    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::SendOverSleep, " << packet->ToString ());
+    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode::SendOverSleep, " << packet->ToString ());
     m_socket->SendTo (packet, 0, InetSocketAddress{m_destIp, m_destPort});
 }
 
 
 void GccNode::CreateRtcp()
 {
-    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode:CreateRtcp");
+    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode:CreateRtcp");
     GccRtcpHeader* header;
     if(m_sending)
     {
@@ -502,7 +502,7 @@ void GccNode::CreateRtcp()
       
       for(auto const& b_ssrc : m_byeSet)
       {
-        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::CreateRtcp, add bye ssrc : "<<b_ssrc);
+        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode::CreateRtcp, add bye ssrc : "<<b_ssrc);
         NS_ASSERT(b_ssrc == m_localSsrc || m_srcSsrcSet.find(b_ssrc) != m_srcSsrcSet.end());
         if(b_ssrc != m_localSsrc)
         {
@@ -530,7 +530,7 @@ void GccNode::CreateRtcp()
       
       if(m_totalRateShapingBuf == 0 && m_complete == true && m_srcSsrcSet.empty())
       {
-        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" GccNode::CreateRtcp, All  streams are completed");
+        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" GccNode::CreateRtcp, All  streams are completed");
         Simulator::Cancel(m_sendEvent);
         Simulator::Cancel(m_enqueueEvent);
         
@@ -551,7 +551,7 @@ void GccNode::SendRtcp(GccRtcpHeader header, bool reschedule)
 {
     auto packet = Create<Packet> ();
     packet->AddHeader (header);
-    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::SendRtcp, " << packet->ToString ());
+    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode::SendRtcp, " << packet->ToString ());
     m_socket->SendTo (packet, 0, InetSocketAddress{m_destIp, m_destPort});
 
     m_sending = false;
@@ -611,7 +611,7 @@ void GccNode::RecvPacket (Ptr<Socket> socket)
     Address remoteAddr;
     auto Packet = m_socket->RecvFrom (remoteAddr);
     NS_ASSERT (Packet);
-    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvPacket, " << Packet->ToString ());
+    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode::RecvPacket, " << Packet->ToString ());
 
     auto rIPAddress = InetSocketAddress::ConvertFrom (remoteAddr).GetIpv4 ();
     auto rport = InetSocketAddress::ConvertFrom (remoteAddr).GetPort ();
@@ -648,10 +648,6 @@ void GccNode::RecvPacket (Ptr<Socket> socket)
         exit(1);
     }
 
-    m_rSend = m_senderController->getBitrate();
-    if(m_rSend == 0)
-      m_rSend = INITRATE;
-    NS_LOG_INFO(GetNode()->GetId()<<" Set Rate : "<<m_rSend);
 }
 
 void GccNode::RecvDataPacket(Ptr<Packet> p, Address remoteAddr)
@@ -661,7 +657,7 @@ void GccNode::RecvDataPacket(Ptr<Packet> p, Address remoteAddr)
     uint32_t pSize = p->GetSize();
 
     RtpHeader header{};
-    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvDataPacket, " << p->ToString ());
+    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode::RecvDataPacket, " << p->ToString ());
     p->RemoveHeader (header);
 
     uint32_t recvSsrc = header.GetSsrc();
@@ -690,7 +686,7 @@ void GccNode::RecvDataPacket(Ptr<Packet> p, Address remoteAddr)
 
     m_recvController->UpdateDelayBasedBitrate(nowMs, seq, header.GetTimestamp(), nowMs, p->GetSize(), 0);
 
-    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvDataPacket, Lost : "<<m_lost[recvSsrc]<<", cumLost : "<<m_cumLost[recvSsrc]<<", recvPackets : "<<m_recvPackets[recvSsrc]++);
+    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode::RecvDataPacket, Lost : "<<m_lost[recvSsrc]<<", cumLost : "<<m_cumLost[recvSsrc]<<", recvPackets : "<<m_recvPackets[recvSsrc]++);
 
     m_receiving = true;
 
@@ -729,7 +725,7 @@ void GccNode::RecvRtcp(Ptr<Packet> p, Address remoteAddr)
     uint64_t nowMs = Simulator::Now().GetMilliSeconds();
     m_recvAllBytes += p->GetSize();
     GccRtcpHeader header{};
-    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRtcp, " << p->ToString ());
+    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode::RecvRtcp, " << p->ToString ());
     p->RemoveHeader (header);
 
     if(m_remoteSsrc == 0)
@@ -755,7 +751,7 @@ void GccNode::RecvRtcp(Ptr<Packet> p, Address remoteAddr)
      
         uint32_t rtt = nowMs-rrb.m_lastSRTime-rrb.m_SRDelay;
      
-        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRtcp, ssrc : "<<rrb.m_sourceSsrc<<", frac : "<<rrb.m_fractionLost<<", cumLost : "<<rrb.m_cumNumLost<<", seq : "<<rrb.m_highestSeqNum<<", last SR Recv Time : "<<rrb.m_lastSRTime<<", SR Delay : "<<rrb.m_SRDelay<<", rtt : "<<rtt);
+        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode::RecvRtcp, ssrc : "<<rrb.m_sourceSsrc<<", frac : "<<rrb.m_fractionLost<<", cumLost : "<<rrb.m_cumNumLost<<", seq : "<<rrb.m_highestSeqNum<<", last SR Recv Time : "<<rrb.m_lastSRTime<<", SR Delay : "<<rrb.m_SRDelay<<", rtt : "<<rtt);
         
         m_lastSrRecvTime[rrb.m_sourceSsrc] = Simulator::Now().GetMilliSeconds();
       }
@@ -768,7 +764,7 @@ void GccNode::RecvRtcp(Ptr<Packet> p, Address remoteAddr)
       
       for(auto const& b_ssrc : bye.m_ssrcSet)
       {
-        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRtcp, receive bye Ssrc : "<<b_ssrc);
+        NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode::RecvRtcp, receive bye Ssrc : "<<b_ssrc);
         NS_ASSERT(m_recvSsrcSet.find(b_ssrc) != m_recvSsrcSet.end());
         m_recvSsrcSet.erase(b_ssrc);
         m_recvSeq.erase(b_ssrc);
@@ -786,6 +782,11 @@ void GccNode::RecvRtcp(Ptr<Packet> p, Address remoteAddr)
         }
       }
     }
+    
+    m_rSend = m_senderController->getBitrate();
+    if(m_rSend == 0)
+      m_rSend = INITRATE;
+    NS_LOG_INFO("Node ID : "<< GetNode()->GetId()<<" GccNode::RecvRtcp Set Rate : "<<m_rSend);
     return;
 }
 
@@ -793,12 +794,16 @@ void GccNode::RecvRembPacket(Ptr<Packet> p, Address remoteAddr)
 {
     m_recvAllBytes += p->GetSize();
     RembHeader header{};
-    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" "<<"GccNode::RecvRembPacket, " << p->ToString ());
+    NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode::RecvRembPacket, " << p->ToString ());
     p->RemoveHeader (header);
     RembHeader::RembBlock remb = header.GetRembBlock();
 
     m_senderController->ApplyReceiverEstimatedBitrate(remb.m_bitrate);
-    NS_LOG_INFO(GetNode()->GetId()<<" Recv Remb Rate : "<<remb.m_bitrate);
+    NS_LOG_INFO("Node ID : "<<GetNode()->GetId()<<" Recv Remb Rate : "<<remb.m_bitrate);
+    m_rSend = m_senderController->getBitrate();
+    if(m_rSend == 0)
+      m_rSend = INITRATE;
+    NS_LOG_INFO("Node ID : "<<GetNode()->GetId()<<" GccNode::RecvRemb, Set Rate : "<<m_rSend);
 }
 
 
