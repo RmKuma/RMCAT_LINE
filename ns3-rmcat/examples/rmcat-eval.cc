@@ -155,7 +155,7 @@ int main (int argc, char *argv[])
     int nTcp = 0;
     int nUdp = 0;
     bool biDirec = false;
-    float endTime = 500;
+    float endTime = 1000;
     uint32_t numStream = 0;
 
     bool log = true;
@@ -214,7 +214,7 @@ int main (int argc, char *argv[])
     int port = 8000;
 
     for (int i = 0; i < nRmcat; i++) {
-        auto start = 10.*i;
+        auto start = 100.*i;
         auto end = std::max (start + 1., endTime - start);
 
         uint16_t port_1 = port++;
@@ -254,7 +254,7 @@ int main (int argc, char *argv[])
     }
 
     for (int i = 0; i < nTcp; i++) {
-        auto start = 17+ 17.*i;
+        auto start = 101+ 10.*i;
         auto end = std::max (start + 1., endTime - start);
         uint16_t port_1 = port++;
 

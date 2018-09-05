@@ -93,7 +93,7 @@ private:
     std::set<uint32_t> m_srcSsrcSet; //ssrcs for multiple stream
     uint32_t m_numSrcSsrc;
     
-    std::map<uint32_t, uint16_t> m_sequence;
+    std::map<uint32_t, uint32_t> m_sequence;
     std::map<uint32_t, uint32_t> m_rtpTsOffset;
    
     EventId m_enqueueEvent;

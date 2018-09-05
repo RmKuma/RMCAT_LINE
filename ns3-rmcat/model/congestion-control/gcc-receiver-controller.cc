@@ -85,9 +85,9 @@ namespace rmcat {
 		var_noise_{50},
 		ts_delta_hist_{},
 
-		k_up_(0.01),
-		k_down_(0.00018),
-		overusing_time_threshold_(10),
+		k_up_(0.01), // default 0.0087 (in webRTC), 0.01(in Gcc Draft)
+		k_down_(0.00018), //default 0.039 (in webRTC), 0.00018 (IN Gcc Draft)
+		overusing_time_threshold_(150), //default 100 (in webRTC : same as propagation delay), 10 (in Gcc Draft)
 		threshold_(12.5),
 		last_threshold_update_ms_(-1),
 		time_over_using_(-1),
@@ -584,8 +584,9 @@ namespace rmcat {
 		double avg_packet_size_bits = bits_per_frame / packets_per_frame;              
 
 		// Approximate the over-use estimator delay to 100 ms.                         
-		const int64_t response_time = (rtt_ + 100) * 2;  // Or this value "rtt_ + 100" ... ;  
-		const double kMinIncreaseRateBps = 4000;                                   
+	//	const int64_t response_time = (rtt_ + 100) * 2;  // Or this value "rtt_ + 100" ... ;  
+		const int64_t response_time = (300 + 100) * 2;  // Or this value "rtt_ + 100" ... ;  
+		const double kMinIncreaseRateBps = 4000; // default 4000 (in webRTC) OR 1000 (in Gcc Draft)                                
 		return static_cast<int>(std::max(                                             
 					kMinIncreaseRateBps, (avg_packet_size_bits * 1000) / response_time));      
 	}                                                                                
@@ -630,8 +631,7 @@ namespace rmcat {
 					uint32_t multiplicative_increase_bps = MultiplicativeRateIncrease(        
 							nowMs, time_last_bitrate_change_, new_bitrate_bps);                  
 					new_bitrate_bps += multiplicative_increase_bps;                           
-				}                                                                           
-
+				}                                                                      
 				time_last_bitrate_change_ = nowMs;                                         
 				break;                                                                      
 
@@ -698,7 +698,7 @@ namespace rmcat {
 	}                                                                                  
 
 	uint32_t GccRecvController::AdditiveRateIncrease(int64_t nowMs, int64_t lastMs) const {    
-		return static_cast<uint32_t>((nowMs - lastMs) * GetNearMaxIncreaseRateBps() / 1000); 
+		return static_cast<uint32_t>((nowMs - lastMs) * GetNearMaxIncreaseRateBps()/1000); 
 	}                                                                                  
 
 	void GccRecvController::UpdateMaxBitRateEstimate(float incoming_bitrate_kbps) {      

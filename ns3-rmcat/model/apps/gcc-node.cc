@@ -255,15 +255,13 @@ void GccNode::StopApplication ()
       m_rateShapingBuf[ssrc].clear();
       m_rateShapingBytes[ssrc] = 0;
     }
-
-    m_socket = NULL;
 }
 
 /*Send Methods*/
 void GccNode::EnqueuePacket ()
 {
     syncodecs::Codec& codec = *m_codec;
-    codec.setTargetRate (m_rSend);
+    codec.setTargetRate (m_rSend*2);
     ++codec; // Advance codec/packetizer to next frame/packet
     const auto bytesToSend = codec->first.size ();
     NS_ASSERT (bytesToSend > 0);
@@ -477,6 +475,7 @@ void GccNode::CreateRtcp()
       rrb.m_lastSRTime = m_lastSrRecvTime[ssrc];
       rrb.m_SRDelay = nowMs-m_lastSrRecvTime[ssrc];
 
+      NS_LOG_INFO(Simulator::Now().ToDouble(Time::S)<<" Node ID : "<<GetNode()->GetId()<<" "<<"GccNode:CreateRtcp, ssrc : "<<ssrc<<" CreateCumLost : "<<m_cumLost[ssrc]<<" Seq : "<<m_recvSeq[ssrc]);
       rrbs.push_back(rrb);
       if(rrbs.size() == GccRtcpHeader::MAX_RB_NUM)
       {

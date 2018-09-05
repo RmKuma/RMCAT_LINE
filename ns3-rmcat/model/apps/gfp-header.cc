@@ -155,7 +155,7 @@ void GccRtcpHeader::Serialize (Buffer::Iterator start) const
         uint16_t octet2 = 0; //named 'octet' but... it is 16bit.
         NS_ASSERT(rrb.m_cumNumLost <= 0xffffff); //24bit
         octet1 |= uint8_t(rrb.m_cumNumLost >> 16); //8bit
-        octet2 |= uint16_t(rrb.m_cumNumLost && 0xffff); //16bit
+        octet2 |= uint16_t(rrb.m_cumNumLost & 0xffff); //16bit
         start.WriteU8 (octet1);
         start.WriteHtonU16 (octet2);
         
