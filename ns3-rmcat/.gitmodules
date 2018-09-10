@@ -1,3 +1,0 @@
-[submodule "model/syncodecs"]
-    path = model/syncodecs
-    url = https://github.com/cisco/syncodecs.git
