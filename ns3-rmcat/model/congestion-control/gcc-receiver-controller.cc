@@ -85,7 +85,7 @@ namespace rmcat {
 		var_noise_{50},
 		ts_delta_hist_{},
 
-		k_up_(0.01), // default 0.0087 (in webRTC), 0.01(in Gcc Draft)
+		k_up_(0.0075), // default 0.0087 (in webRTC), 0.01(in Gcc Draft)
 		k_down_(0.00018), //default 0.039 (in webRTC), 0.00018 (IN Gcc Draft)
 		overusing_time_threshold_(150), //default 100 (in webRTC : same as propagation delay), 10 (in Gcc Draft)
 		threshold_(12.5),

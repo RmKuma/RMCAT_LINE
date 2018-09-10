@@ -155,7 +155,7 @@ int main (int argc, char *argv[])
     int nTcp = 0;
     int nUdp = 0;
     bool biDirec = false;
-    float endTime = 1000;
+    float endTime = 1500;
     uint32_t numStream = 0;
 
     bool log = true;
